@@ -4,7 +4,7 @@ Slice-by-slice migration of the legacy `job-radar` n8n engine into a clean, type
 tested, world-class repo. Each slice is one coherent change with its tests in the same
 commit. Cumulative % and commit hashes are filled in as slices land.
 
-**Current: 45% — M0–M4 complete; M5 next.**
+**Current: ~62% — M0–M4, M5.1, M6 complete; M5.2/5.3 deferred; M7 next.**
 
 ---
 
@@ -42,18 +42,19 @@ commit. Cumulative % and commit hashes are filled in as slices land.
 - [x] 4.2 digest builder + chunking/escaping + tests (4b36781)
 - [x] 4.3 Telegram intent router + prefs + curated SQL + menu builder + tests (c1ef6cb, 1c88636, a7085a3)
 
-## M5 — n8n adapters (target 53%)
+## M5 — n8n adapters (partial)
 
-- [ ] 5.1 SQL builder (`pgEscape`, `buildSql`) injection-safe + tests
-- [ ] 5.2 generate n8n Code-node bodies from the lib (build step) + parity test
-- [ ] 5.3 updated workflow JSON exports verified
+- [x] 5.1 SQL builder (`pgEscape`, `buildSql`) injection-safe + tests (d56ec2e)
+- [ ] 5.2 generate n8n Code-node bodies from the lib (build step) + parity test — **DEFERRED** (see Known issues)
+- [ ] 5.3 updated workflow JSON exports verified — **DEFERRED**
 
-## M6 — CLI runner (target 62%)
+## M6 — CLI runner ✅ (+ source plumbing)
 
-- [ ] 6.1 `kestrel scan --domain --country --top` (real keyless public boards) + tests
-- [ ] 6.2 local store (SQLite/JSON) for cross-run dedup + tests
-- [ ] 6.3 offline fixture mode (`--offline`, dev/test only — never used for screenshots)
-- [ ] 6.4 real smoke run captured to a run report
+- [x] 6.0 ATS board registry + source request planning + source runner + full scan orchestration + tests (e5a4c9a, 10eddf3, ae8536a, 0afd041)
+- [x] 6.1 fetch + verify HTTP clients + `kestrel scan` CLI + tests (951d496, b5d518a)
+- [x] 6.3 offline fixture mode (`--offline`, dev/test only) + tests (c1be0ea)
+- [x] 6.4 real smoke run verified — live scan returned 43 matched AI/ML jobs from 1581 real candidates with verified links
+- [ ] 6.2 local store (SQLite/JSON) for cross-run dedup → folded into M7.6
 
 ## M7 — Features (target 75%)
 
@@ -98,12 +99,15 @@ commit. Cumulative % and commit hashes are filled in as slices land.
 
 ## Known issues
 
+- **M5.2/5.3 deferred:** regenerating the n8n Code-node bodies from the typed lib (esbuild
+  bundling into Code-node strings + a parity test) is scoped but not done. The production
+  n8n workflow already runs; this is a sync/maintainability improvement, not a blocker.
 - Legacy n8n install blocks Code-node access to `$env`; the env reads must stay guarded.
-- Some public ATS slugs in the legacy list are stale (return zero jobs) — to be pruned in M2.
+- Some public ATS slugs are stale (return zero jobs) — prune during a real run.
 
 ## Next
 
-→ M5.1: SQL builder (`pgEscape`, `buildSql`) injection-safe, with tests.
+→ M7.1: config-driven taxonomy (extensible, schema-validated), with tests.
 
 ## ✍️ TODO: my words
 
