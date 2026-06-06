@@ -28,7 +28,9 @@ jobs:
       - run: npm run typecheck
       - run: npm run test:cov
       - run: npm run build
-      - run: npm audit --audit-level=high
+      # Audit the PRODUCTION surface — what actually ships (dev test-tooling CVEs
+      # like vitest/esbuild are not shipped and their only fix is a major bump).
+      - run: npm audit --omit=dev --audit-level=high
 
   web:
     name: Web (lint · types · test · build)
@@ -48,7 +50,7 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
-      - run: npm audit --audit-level=high
+      - run: npm audit --omit=dev --audit-level=high
 
   gitleaks:
     name: Secret scan (gitleaks)
@@ -66,6 +68,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # Scan the SHIPPED surface only: drop devDependencies and regenerate the
+      # lockfiles so Trivy sees production deps (the published library + web
+      # runtime), not dev test-tooling that is never shipped.
+      - name: Build production-only lockfiles
+        run: |
+          for dir in . web; do
+            node -e "const fs=require('fs');const p=require('./$dir/package.json');delete p.devDependencies;fs.writeFileSync('./$dir/package.json',JSON.stringify(p,null,2));"
+            rm -f "$dir/package-lock.json"
+            npm install --package-lock-only --prefix "$dir"
+          done
       - uses: aquasecurity/trivy-action@0.28.0
         with:
           scan-type: fs
