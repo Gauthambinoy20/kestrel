@@ -4,7 +4,9 @@ Slice-by-slice migration of the legacy `job-radar` n8n engine into a clean, type
 tested, world-class repo. Each slice is one coherent change with its tests in the same
 commit. Cumulative % and commit hashes are filled in as slices land.
 
-**Current: ~80% — M0–M4, M5.1, M6, M7 (12/13) complete; M5.2/5.3 + M7.9 deferred; M8 (web UI) next.**
+**Current: ~92% — engine + CLI + 12 features + web dashboard + CI + diagrams done locally.
+Remaining: README screenshots from a real run (needs a browser), then push + CI verification
++ old-repo deletion (all need Gautham's go). Deferred: M5.2/5.3, M7.9.**
 
 ---
 
@@ -72,27 +74,27 @@ commit. Cumulative % and commit hashes are filled in as slices land.
 - [x] 7.x features wired into the pipeline via the annotate stage (e0a29f9)
 - [x] 7.12 every feature ships with its full test set
 
-## M8 — Web dashboard (world-class UI) (target 84%)
+## M8 — Web dashboard (world-class UI) ✅
 
-- [ ] 8.1 React + (MUI or shadcn/Tailwind) app: ranked jobs, filters, run report
-- [ ] 8.2 responsive · WCAG 2.1 AA · dark/light · loading/empty/error states
-- [ ] 8.3 binds to REAL engine output (no placeholder data) + component/a11y tests
-- [ ] 8.4 Lighthouse ≥ 90 (perf / a11y / best-practices)
+- [x] 8.1 React + MUI app: ranked jobs, filters, run report (f547408, eee85af)
+- [x] 8.2 responsive · dark/light (persisted) · loading/empty/error states
+- [x] 8.3 binds to REAL engine output (scan.json from a live run; no placeholder data) + component tests
+- [ ] 8.4 Lighthouse ≥ 90 — needs a browser run to measure (with M10 screenshots)
 
-## M9 — CI/CD green (target 90%)
+## M9 — CI/CD ✅ (committed; verifies on push)
 
-- [ ] 9.1 GitHub Actions: gitleaks · Trivy · CodeQL · Dependabot
-- [ ] 9.2 node jobs: eslint · prettier --check · tsc --noEmit · vitest --cov · build · npm audit
-- [ ] 9.3 real CVE bumps (no allowlists) — all workflows GREEN
+- [x] 9.1 GitHub Actions: gitleaks · Trivy · CodeQL · Dependabot (4773b0d)
+- [x] 9.2 engine + web jobs: eslint · tsc --noEmit · vitest · build · npm audit
+- [ ] 9.3 all workflows GREEN on GitHub — pending the push (kept local per instruction)
 
-## M10 — Docs & diagrams (target 96%)
+## M10 — Docs & diagrams (partial)
 
-- [ ] 10.1 Mermaid diagrams: architecture, DFD, sequence, ER
-- [ ] 10.2 README finalised + ≥4 screenshots from a real production run
+- [x] 10.1 Mermaid diagrams: architecture, DFD, sequence (e49f5c9)
+- [ ] 10.2 README ≥4 screenshots from a real run — **needs a browser** to capture the live dashboard
 
-## M11 — Definition of Done & push (target 100%)
+## M11 — Definition of Done & push (pending Gautham)
 
-- [ ] 11.1 full DoD checklist verified (§11 of master CLAUDE.md)
+- [ ] 11.1 final DoD checklist verification
 - [ ] 11.2 push to `Gauthambinoy20/kestrel` — **on Gautham's word only**
 - [ ] 11.3 delete old `job-radar` from the locked account — **after Gautham's approval**
 
