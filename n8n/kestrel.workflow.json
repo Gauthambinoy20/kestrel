@@ -1,0 +1,358 @@
+{
+  "name": "Job Radar — Multi-source AI",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "n0",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [
+        240,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 7 * * *"
+            }
+          ]
+        }
+      },
+      "id": "n1",
+      "name": "Schedule 7am",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        240,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "job-radar",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "n2",
+      "name": "Webhook On-demand",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        240,
+        400
+      ],
+      "webhookId": "job-radar-trigger"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a1",
+              "name": "domain",
+              "value": "={{ $json.body?.domain_slug || $json.body?.domain || $json.domain_slug || $json.domain || 'AI, Machine Learning and GenAI' }}",
+              "type": "string"
+            },
+            {
+              "id": "a2",
+              "name": "country",
+              "value": "={{ $json.body?.country || $json.country || 'IE' }}",
+              "type": "string"
+            },
+            {
+              "id": "a3",
+              "name": "top_n",
+              "value": "={{ Number($json.body?.top_n || $json.top_n || 10) }}",
+              "type": "number"
+            },
+            {
+              "id": "a4",
+              "name": "telegram_chat_id",
+              "value": "={{ $json.body?.telegram_chat_id || $json.body?.chat_id || $json.telegram_chat_id || $json.chat_id || '' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "n3",
+      "name": "Set Input",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        480,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n  COALESCE((\n    SELECT jsonb_build_object(\n      'skills', skills,\n      'experience_years', experience_years,\n      'education', education,\n      'salary_min', salary_min,\n      'salary_max', salary_max,\n      'target_countries', target_countries,\n      'availability', availability\n    )\n    FROM user_profiles\n    ORDER BY profile_updated_date DESC NULLS LAST, created_at DESC NULLS LAST, id DESC\n    LIMIT 1\n  ), '{}'::jsonb) AS profile,\n  jsonb_build_object('country', $1) AS country_cfg,\n  ARRAY['senior','sr','staff','principal','lead','director','head','vp','chief','cto','ciso','engineering manager','software development manager','team manager']::text[] AS blocklist;",
+        "options": {
+          "queryReplacement": "={{ $json.country }}"
+        }
+      },
+      "id": "n4",
+      "name": "Load Profile",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        720,
+        300
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "OUDCM3bFPecgX46T",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "function pgEscape(v) {\n  if (v === null || v === undefined) return 'NULL';\n  if (typeof v === 'number') return Number.isFinite(v) ? String(v) : '0';\n  if (typeof v === 'boolean') return v ? 'TRUE' : 'FALSE';\n  const s = String(v);\n  return \"'\" + s.replace(/'/g, \"''\") + \"'\";\n}\n\nfunction stableHash(input) {\n  const s = String(input || '');\n  const seeds = [0x811c9dc5, 0x45d9f3b, 0x27d4eb2d, 0x165667b1];\n  return seeds.map((seed, i) => {\n    let h = seed ^ s.length ^ i;\n    for (let n = 0; n < s.length; n++) {\n      h ^= s.charCodeAt(n);\n      h = Math.imul(h, 16777619);\n    }\n    return (h >>> 0).toString(16).padStart(8, '0');\n  }).join('');\n}\n\nfunction pgTimestamp(v) {\n  const d = new Date(v || Date.now());\n  const iso = Number.isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();\n  return pgEscape(iso) + '::timestamp';\n}\n\nfunction pgNumeric(v, fallback = 0) {\n  const n = Number(v);\n  return Number.isFinite(n) ? String(n) : String(fallback);\n}\n\nfunction isEntryLevelTitle(title) {\n  return /\\b(junior|jr|graduate|new grad|entry level|early career|trainee|apprentice|associate)\\b/i.test(String(title || ''));\n}\n\nfunction buildSql(o) {\n  const cols = [\n    'company', 'title', 'location', 'country', 'jd_full_text', 'original_url',\n    'source', 'posted_date', 'match_score', 'job_type', 'is_graduate',\n    'experience_years_max',\n  ];\n  const vals = [\n    pgEscape(o.company || 'Unknown'),\n    pgEscape(o.title || 'Untitled role'),\n    pgEscape(o.location || o.country || 'Unknown'),\n    pgEscape(o.country || 'IE'),\n    pgEscape(o.jd_text || ''),\n    pgEscape(o.url),\n    pgEscape(String(o.source || 'unknown').slice(0, 50)),\n    pgTimestamp(o.posted_at),\n    pgNumeric(o.match_score, 0),\n    pgEscape(o.remote_type || null),\n    pgEscape(isEntryLevelTitle(o.title)),\n    '0',\n  ];\n  const returning = [\n    'id', 'title', 'company', 'location',\n    'original_url AS url',\n    'jd_full_text AS jd_text',\n    'md5(original_url) AS hash',\n    'source',\n    '(xmax = 0) AS is_new',\n    `${pgEscape(o.domain_slug)} AS domain_slug`,\n    `${pgEscape(o.domain_label)} AS domain_label`,\n    `${pgEscape(o.matched_role)} AS matched_role`,\n    `${pgEscape(o.matched_alias)} AS matched_alias`,\n    `${Math.round(Number(o.match_score || 0))} AS match_score`,\n    `${pgEscape(o.keyword_hits || '')} AS keyword_hits`,\n    `${Number(o.alias_count || 0)} AS alias_count`,\n    `${pgEscape(o.telegram_chat_id || '')} AS telegram_chat_id`,\n  ].join(', ');\n  return `INSERT INTO jobs (${cols.join(',')}) VALUES (${vals.join(',')}) ON CONFLICT (original_url) DO UPDATE SET company=EXCLUDED.company, title=EXCLUDED.title, location=EXCLUDED.location, country=EXCLUDED.country, jd_full_text=EXCLUDED.jd_full_text, source=EXCLUDED.source, posted_date=COALESCE(EXCLUDED.posted_date, jobs.posted_date), match_score=EXCLUDED.match_score, job_type=EXCLUDED.job_type, is_graduate=EXCLUDED.is_graduate, updated_at=CURRENT_TIMESTAMP RETURNING ${returning};`;\n}\n\nconst ENTRY_TITLE_PREFIXES = [\n  '', 'Junior ', 'Associate ', 'Graduate ', 'Entry Level ', 'Early Career ',\n  'New Grad ', 'Trainee ', 'Apprentice ', 'Remote ', 'Contract ', 'Freelance ',\n];\nconst ENTRY_TITLE_SUFFIXES = ['', ' I', ' II', ' Associate', ' Specialist'];\n\nconst DOMAIN_TAXONOMY = [\n  {\n    slug: 'ai_ml_genai',\n    label: 'AI, Machine Learning and GenAI',\n    inputAliases: ['ai', 'ml', 'genai', 'ai ml', 'ai engineer', 'machine learning', 'llm'],\n    searchQueries: ['AI Engineer', 'Machine Learning Engineer', 'LLM Engineer', 'MLOps Engineer', 'Data Scientist'],\n    coreRoles: ['AI Engineer', 'Machine Learning Engineer', 'ML Engineer', 'Applied AI Engineer', 'Generative AI Engineer', 'GenAI Engineer', 'LLM Engineer', 'MLOps Engineer', 'NLP Engineer', 'Computer Vision Engineer', 'Deep Learning Engineer', 'AI Research Engineer', 'Applied Scientist', 'Data Scientist', 'AI Automation Engineer', 'Prompt Engineer', 'AI Product Engineer', 'AI Solutions Engineer'],\n    terms: ['artificial intelligence', 'machine learning', 'generative ai', 'genai', 'llm', 'rag', 'nlp', 'computer vision', 'deep learning', 'pytorch', 'tensorflow', 'mlops', 'model deployment', 'langchain', 'vector database', 'embeddings'],\n  },\n  {\n    slug: 'software_engineering',\n    label: 'Software Engineering',\n    inputAliases: ['software', 'software engineer', 'application developer', 'developer'],\n    searchQueries: ['Software Engineer', 'Software Developer', 'Application Developer', 'Python Developer', 'Java Developer'],\n    coreRoles: ['Software Engineer', 'Software Developer', 'Application Developer', 'Systems Software Engineer', 'Platform Software Engineer', 'API Engineer', 'Integration Engineer', 'Tools Engineer', 'Runtime Engineer', 'Embedded Software Engineer', 'Enterprise Application Developer', 'Java Developer', 'Python Developer', '.NET Developer', 'C++ Developer', 'Go Developer', 'Rust Developer'],\n    terms: ['software development', 'application development', 'api', 'system design', 'python', 'java', 'javascript', 'typescript', 'c#', '.net', 'go', 'rust', 'testing', 'debugging'],\n  },\n  {\n    slug: 'backend_engineering',\n    label: 'Backend Engineering',\n    inputAliases: ['backend', 'back end', 'server side', 'api backend'],\n    searchQueries: ['Backend Engineer', 'Back End Engineer', 'API Engineer', 'Microservices Engineer', 'Java Backend Developer'],\n    coreRoles: ['Backend Engineer', 'Back End Engineer', 'Server Side Engineer', 'API Engineer', 'Microservices Engineer', 'Distributed Systems Engineer', 'Cloud Backend Engineer', 'Java Backend Developer', 'Python Backend Developer', 'Go Backend Developer', 'Node.js Backend Developer', 'Ruby Backend Developer', 'Platform API Engineer', 'Payments Backend Engineer', 'Backend Software Developer'],\n    terms: ['backend', 'api', 'microservices', 'distributed systems', 'rest', 'graphql', 'postgresql', 'mysql', 'redis', 'kafka', 'queues', 'node.js', 'java', 'go', 'python'],\n  },\n  {\n    slug: 'frontend_web',\n    label: 'Frontend and Web Engineering',\n    inputAliases: ['frontend', 'front end', 'web', 'ui engineer', 'react'],\n    searchQueries: ['Frontend Engineer', 'Front End Engineer', 'React Developer', 'Web Developer', 'UI Engineer'],\n    coreRoles: ['Frontend Engineer', 'Front End Engineer', 'Web Developer', 'UI Engineer', 'React Developer', 'Vue Developer', 'Angular Developer', 'JavaScript Developer', 'TypeScript Developer', 'Web Application Engineer', 'Design Systems Engineer', 'Frontend Platform Engineer', 'UX Engineer', 'Accessibility Engineer', 'Shopify Developer', 'WordPress Developer'],\n    terms: ['frontend', 'front end', 'web application', 'react', 'vue', 'angular', 'javascript', 'typescript', 'html', 'css', 'accessibility', 'design systems', 'next.js', 'ui'],\n  },\n  {\n    slug: 'full_stack',\n    label: 'Full Stack Engineering',\n    inputAliases: ['full stack', 'fullstack', 'mern', 'mean', 'product engineer'],\n    searchQueries: ['Full Stack Engineer', 'Full Stack Developer', 'Product Engineer', 'React Node Developer', 'Next.js Developer'],\n    coreRoles: ['Full Stack Engineer', 'Fullstack Engineer', 'Full Stack Developer', 'Web Engineer', 'Product Engineer', 'Software Engineer Full Stack', 'MERN Stack Developer', 'MEAN Stack Developer', 'React Node Developer', 'Next.js Developer', 'Django React Developer', 'Rails Full Stack Developer', 'Java Full Stack Developer', '.NET Full Stack Developer'],\n    terms: ['full stack', 'frontend', 'backend', 'react', 'node.js', 'next.js', 'django', 'rails', 'api', 'postgresql', 'typescript', 'javascript'],\n  },\n  {\n    slug: 'data_engineering',\n    label: 'Data Engineering',\n    inputAliases: ['data engineering', 'data engineer', 'etl', 'elt', 'data platform'],\n    searchQueries: ['Data Engineer', 'Analytics Engineer', 'Data Platform Engineer', 'ETL Developer', 'Spark Engineer'],\n    coreRoles: ['Data Engineer', 'Analytics Engineer', 'Big Data Engineer', 'ETL Developer', 'ELT Developer', 'Data Pipeline Engineer', 'Spark Engineer', 'Airflow Engineer', 'Data Platform Engineer', 'Warehouse Engineer', 'Lakehouse Engineer', 'Streaming Data Engineer', 'Kafka Data Engineer', 'Cloud Data Engineer', 'DBT Engineer', 'DataOps Engineer'],\n    terms: ['data engineering', 'etl', 'elt', 'pipeline', 'spark', 'airflow', 'dbt', 'warehouse', 'lakehouse', 'snowflake', 'bigquery', 'databricks', 'kafka', 'sql'],\n  },\n  {\n    slug: 'data_analytics_bi',\n    label: 'Data Analytics and Business Intelligence',\n    inputAliases: ['analytics', 'data analyst', 'bi', 'business intelligence', 'reporting'],\n    searchQueries: ['Data Analyst', 'Business Intelligence Analyst', 'BI Developer', 'Product Analyst', 'Power BI Developer'],\n    coreRoles: ['Data Analyst', 'Business Intelligence Analyst', 'BI Developer', 'Reporting Analyst', 'Analytics Consultant', 'Product Analyst', 'Marketing Data Analyst', 'Operations Analyst', 'Tableau Developer', 'Power BI Developer', 'Looker Developer', 'SQL Analyst', 'Insights Analyst', 'Growth Analyst', 'Revenue Analyst'],\n    terms: ['analytics', 'business intelligence', 'dashboard', 'reporting', 'sql', 'tableau', 'power bi', 'looker', 'excel', 'insights', 'metrics', 'kpi'],\n  },\n  {\n    slug: 'cloud_engineering',\n    label: 'Cloud Engineering',\n    inputAliases: ['cloud', 'aws', 'azure', 'gcp', 'cloud infrastructure'],\n    searchQueries: ['Cloud Engineer', 'AWS Engineer', 'Azure Engineer', 'GCP Engineer', 'Cloud Infrastructure Engineer'],\n    coreRoles: ['Cloud Engineer', 'AWS Engineer', 'Azure Engineer', 'GCP Engineer', 'Cloud Infrastructure Engineer', 'Cloud Operations Engineer', 'Cloud Platform Engineer', 'Cloud Automation Engineer', 'Cloud Migration Engineer', 'Cloud Support Engineer', 'Cloud Solutions Engineer', 'Cloud Systems Engineer', 'Terraform Engineer', 'Kubernetes Cloud Engineer'],\n    terms: ['cloud', 'aws', 'azure', 'gcp', 'terraform', 'kubernetes', 'docker', 'iam', 'ec2', 'lambda', 'eks', 'aks', 'gke', 'cloud migration', 'infrastructure'],\n  },\n  {\n    slug: 'devops_platform_sre',\n    label: 'DevOps, Platform and Site Reliability',\n    inputAliases: ['devops', 'platform', 'sre', 'site reliability', 'infrastructure engineer'],\n    searchQueries: ['DevOps Engineer', 'Platform Engineer', 'Site Reliability Engineer', 'SRE', 'Infrastructure Engineer'],\n    coreRoles: ['DevOps Engineer', 'Platform Engineer', 'Site Reliability Engineer', 'SRE', 'Infrastructure Engineer', 'CI/CD Engineer', 'Release Engineer', 'Build Engineer', 'Kubernetes Engineer', 'Observability Engineer', 'Production Engineer', 'Linux Platform Engineer', 'Systems Reliability Engineer', 'Cloud DevOps Engineer', 'IaC Engineer'],\n    terms: ['devops', 'platform engineering', 'site reliability', 'sre', 'ci/cd', 'kubernetes', 'terraform', 'linux', 'observability', 'prometheus', 'grafana', 'incident response', 'automation'],\n  },\n  {\n    slug: 'cybersecurity',\n    label: 'Cybersecurity',\n    inputAliases: ['cybersecurity', 'cyber security', 'security', 'soc', 'appsec'],\n    searchQueries: ['Cyber Security Engineer', 'Security Engineer', 'SOC Analyst', 'Application Security Engineer', 'Cloud Security Engineer'],\n    coreRoles: ['Security Engineer', 'Cyber Security Engineer', 'SOC Analyst', 'Information Security Analyst', 'Application Security Engineer', 'AppSec Engineer', 'Cloud Security Engineer', 'Security Operations Engineer', 'Detection Engineer', 'Incident Response Analyst', 'Vulnerability Analyst', 'Penetration Tester', 'IAM Engineer', 'GRC Analyst', 'Security Automation Engineer', 'Product Security Engineer'],\n    terms: ['security', 'cybersecurity', 'soc', 'siem', 'vulnerability', 'incident response', 'appsec', 'cloud security', 'iam', 'penetration testing', 'threat detection', 'grc', 'compliance'],\n  },\n  {\n    slug: 'qa_test_automation',\n    label: 'QA and Test Automation',\n    inputAliases: ['qa', 'quality assurance', 'test automation', 'sdet', 'tester'],\n    searchQueries: ['QA Engineer', 'Test Automation Engineer', 'SDET', 'Software Test Engineer', 'QA Automation Engineer'],\n    coreRoles: ['QA Engineer', 'Test Engineer', 'Automation Test Engineer', 'SDET', 'Software Development Engineer in Test', 'Manual QA Tester', 'QA Analyst', 'Quality Engineer', 'Test Automation Developer', 'Performance Test Engineer', 'API Test Engineer', 'Mobile QA Engineer', 'Web QA Engineer', 'Regression Test Engineer', 'QA Automation Engineer'],\n    terms: ['qa', 'quality assurance', 'test automation', 'sdet', 'selenium', 'cypress', 'playwright', 'api testing', 'manual testing', 'regression', 'performance testing', 'test cases'],\n  },\n  {\n    slug: 'mobile_development',\n    label: 'Mobile Development',\n    inputAliases: ['mobile', 'ios', 'android', 'react native', 'flutter'],\n    searchQueries: ['Mobile Developer', 'iOS Developer', 'Android Developer', 'React Native Developer', 'Flutter Developer'],\n    coreRoles: ['Mobile Developer', 'Mobile Engineer', 'iOS Developer', 'Android Developer', 'React Native Developer', 'Flutter Developer', 'Kotlin Developer', 'Swift Developer', 'Mobile App Developer', 'iOS Engineer', 'Android Engineer', 'Cross Platform Mobile Engineer', 'Mobile Platform Engineer', 'Wearables Developer'],\n    terms: ['mobile', 'ios', 'android', 'swift', 'kotlin', 'react native', 'flutter', 'xcode', 'android studio', 'app store', 'play store'],\n  },\n  {\n    slug: 'database_dba',\n    label: 'Database Engineering and DBA',\n    inputAliases: ['database', 'dba', 'sql developer', 'database engineer'],\n    searchQueries: ['Database Engineer', 'Database Administrator', 'SQL Developer', 'PostgreSQL Developer', 'Database Reliability Engineer'],\n    coreRoles: ['Database Administrator', 'DBA', 'Database Engineer', 'SQL Developer', 'PostgreSQL Developer', 'MySQL DBA', 'Oracle DBA', 'SQL Server DBA', 'Database Reliability Engineer', 'Data Platform DBA', 'Database Performance Engineer', 'ETL Database Developer', 'MongoDB Database Engineer', 'NoSQL Database Engineer'],\n    terms: ['database', 'dba', 'sql', 'postgresql', 'mysql', 'oracle', 'sql server', 'mongodb', 'nosql', 'replication', 'query tuning', 'backup', 'performance'],\n  },\n  {\n    slug: 'it_support_sysadmin',\n    label: 'IT Support and Systems Administration',\n    inputAliases: ['it support', 'sysadmin', 'system administrator', 'help desk', 'service desk'],\n    searchQueries: ['IT Support Engineer', 'Systems Administrator', 'Desktop Support Engineer', 'Service Desk Analyst', 'Technical Support Engineer'],\n    coreRoles: ['IT Support Engineer', 'Technical Support Engineer', 'Desktop Support Engineer', 'Help Desk Analyst', 'Service Desk Analyst', 'Systems Administrator', 'Linux Administrator', 'Windows Administrator', 'IT Operations Engineer', 'End User Computing Engineer', 'Field Support Engineer', 'Application Support Analyst', 'IT Technician', 'Support Specialist'],\n    terms: ['it support', 'help desk', 'service desk', 'systems administrator', 'linux', 'windows', 'active directory', 'office 365', 'endpoint', 'ticketing', 'hardware', 'desktop support'],\n  },\n  {\n    slug: 'network_engineering',\n    label: 'Network Engineering',\n    inputAliases: ['network', 'networking', 'noc', 'network engineer'],\n    searchQueries: ['Network Engineer', 'NOC Engineer', 'Network Administrator', 'Network Security Engineer', 'Cloud Network Engineer'],\n    coreRoles: ['Network Engineer', 'Network Administrator', 'NOC Engineer', 'Network Operations Engineer', 'Infrastructure Network Engineer', 'Cisco Network Engineer', 'Firewall Engineer', 'Wireless Network Engineer', 'Network Security Engineer', 'Telecoms Engineer', 'Network Support Engineer', 'SD-WAN Engineer', 'Cloud Network Engineer', 'Network Automation Engineer'],\n    terms: ['network', 'networking', 'noc', 'cisco', 'routing', 'switching', 'firewall', 'vpn', 'sd-wan', 'wireless', 'tcp/ip', 'dns', 'dhcp', 'bgp'],\n  },\n  {\n    slug: 'product_technical_product',\n    label: 'Product and Technical Product',\n    inputAliases: ['product', 'technical product', 'product owner', 'product analyst', 'business analyst'],\n    searchQueries: ['Technical Product Manager', 'Product Owner', 'Product Analyst', 'Business Analyst', 'Associate Product Manager'],\n    coreRoles: ['Product Manager', 'Technical Product Manager', 'Product Owner', 'Associate Product Manager', 'Product Analyst', 'Business Analyst', 'Technical Business Analyst', 'Product Operations Analyst', 'Technical Project Manager', 'Technical Program Manager', 'Scrum Master', 'Agile Business Analyst', 'Platform Product Manager', 'Data Product Manager'],\n    terms: ['product', 'roadmap', 'requirements', 'user stories', 'backlog', 'stakeholder', 'analytics', 'go-to-market', 'scrum', 'agile', 'product operations'],\n  },\n  {\n    slug: 'solutions_presales_customer',\n    label: 'Solutions, Presales and Customer Engineering',\n    inputAliases: ['solutions', 'presales', 'pre sales', 'customer engineer', 'sales engineer', 'solution architect'],\n    searchQueries: ['Solutions Engineer', 'Sales Engineer', 'Customer Engineer', 'Implementation Engineer', 'Technical Consultant'],\n    coreRoles: ['Solutions Engineer', 'Sales Engineer', 'Pre-Sales Engineer', 'Customer Engineer', 'Solutions Architect', 'Technical Account Manager', 'Customer Success Engineer', 'Implementation Engineer', 'Integration Consultant', 'Partner Engineer', 'Developer Advocate', 'Field Engineer', 'Professional Services Engineer', 'Technical Consultant'],\n    terms: ['solutions engineering', 'presales', 'pre-sales', 'customer engineering', 'implementation', 'integration', 'solution architecture', 'technical consulting', 'proof of concept', 'demo'],\n  },\n  {\n    slug: 'automation_rpa_low_code',\n    label: 'Automation, RPA and Low Code',\n    inputAliases: ['automation', 'rpa', 'low code', 'no code', 'workflow automation', 'n8n'],\n    searchQueries: ['Automation Engineer', 'RPA Developer', 'Power Automate Developer', 'Workflow Automation Engineer', 'Low Code Developer'],\n    coreRoles: ['Automation Engineer', 'RPA Developer', 'RPA Engineer', 'UiPath Developer', 'Power Automate Developer', 'n8n Automation Developer', 'Zapier Automation Specialist', 'Workflow Automation Engineer', 'Business Process Automation Engineer', 'Low Code Developer', 'No Code Developer', 'Process Automation Analyst', 'Automation Consultant', 'AI Automation Developer'],\n    terms: ['automation', 'rpa', 'uipath', 'power automate', 'n8n', 'zapier', 'make.com', 'workflow', 'low code', 'no code', 'process automation', 'business process'],\n  },\n  {\n    slug: 'blockchain_web3',\n    label: 'Blockchain and Web3',\n    inputAliases: ['blockchain', 'web3', 'crypto', 'solidity', 'smart contract'],\n    searchQueries: ['Blockchain Developer', 'Web3 Developer', 'Solidity Developer', 'Smart Contract Engineer', 'Protocol Engineer'],\n    coreRoles: ['Blockchain Developer', 'Blockchain Engineer', 'Web3 Developer', 'Solidity Developer', 'Smart Contract Engineer', 'Protocol Engineer', 'DeFi Engineer', 'Crypto Backend Engineer', 'Ethereum Developer', 'Rust Blockchain Developer', 'Substrate Developer', 'dApp Developer', 'Web3 Frontend Developer', 'Wallet Engineer'],\n    terms: ['blockchain', 'web3', 'solidity', 'smart contract', 'ethereum', 'defi', 'wallet', 'protocol', 'rust', 'substrate', 'dapp', 'crypto'],\n  },\n  {\n    slug: 'game_ar_vr',\n    label: 'Game, AR, VR and Simulation',\n    inputAliases: ['game', 'gaming', 'ar', 'vr', 'xr', 'unity', 'unreal'],\n    searchQueries: ['Game Developer', 'Unity Developer', 'Unreal Developer', 'Gameplay Programmer', 'XR Developer'],\n    coreRoles: ['Game Developer', 'Gameplay Programmer', 'Unity Developer', 'Unreal Developer', 'Game Engineer', 'AR Developer', 'VR Developer', 'XR Developer', 'Simulation Engineer', 'Technical Artist', 'Tools Programmer', 'Engine Programmer', 'Graphics Programmer', 'C# Game Developer', 'C++ Game Developer'],\n    terms: ['game development', 'unity', 'unreal', 'gameplay', 'ar', 'vr', 'xr', 'simulation', 'c#', 'c++', 'graphics', 'engine'],\n  },\n];\n\nfunction normalizeText(v) {\n  return String(v || '')\n    .toLowerCase()\n    .replace(/&/g, ' and ')\n    .replace(/[._+/()-]/g, ' ')\n    .replace(/[^a-z0-9#\\s]/g, ' ')\n    .replace(/\\s+/g, ' ')\n    .trim();\n}\n\nfunction stripTitleNoise(v) {\n  return normalizeText(v)\n    .replace(/\\b(junior|jr|associate|graduate|entry level|early career|new grad|trainee|apprentice|remote|contract|freelance|i|ii)\\b/g, ' ')\n    .replace(/\\s+/g, ' ')\n    .trim();\n}\n\nfunction containsPhrase(hay, phrase) {\n  const h = ` ${normalizeText(hay)} `;\n  const p = normalizeText(phrase);\n  return p && h.includes(` ${p} `);\n}\n\nfunction enrichDomain(domain) {\n  const rawAliases = new Set();\n  for (const role of domain.coreRoles) {\n    rawAliases.add(role);\n    for (const prefix of ENTRY_TITLE_PREFIXES) {\n      for (const suffix of ENTRY_TITLE_SUFFIXES) {\n        rawAliases.add(`${prefix}${role}${suffix}`.trim());\n      }\n    }\n  }\n  const aliases = [...rawAliases].filter(Boolean);\n  const aliasNeedles = [...new Set(aliases.map(stripTitleNoise).filter(v => v.length >= 4))];\n  return {\n    ...domain,\n    aliases,\n    aliasNeedles,\n    aliasCount: aliases.length,\n    normalizedInputs: [domain.slug, domain.label, ...domain.inputAliases].map(normalizeText),\n    normalizedTerms: domain.terms.map(normalizeText),\n  };\n}\n\nconst ENRICHED_DOMAINS = DOMAIN_TAXONOMY.map(enrichDomain);\n\nfunction resolveSelectedDomains(rawDomain) {\n  const raw = normalizeText(rawDomain || 'AI, Machine Learning and GenAI');\n  if (['all', 'all domains', 'all it', 'everything', 'any'].includes(raw)) {\n    return ENRICHED_DOMAINS;\n  }\n  const exact = ENRICHED_DOMAINS.find(d => d.normalizedInputs.includes(raw));\n  if (exact) return [exact];\n  const fuzzy = ENRICHED_DOMAINS.find(d => d.normalizedInputs.some(alias => raw.includes(alias) || alias.includes(raw)));\n  if (fuzzy) return [fuzzy];\n  return [enrichDomain({\n    slug: raw.replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'custom',\n    label: rawDomain || 'Custom Domain',\n    inputAliases: [rawDomain || 'custom'],\n    searchQueries: [rawDomain || 'Software Engineer'],\n    coreRoles: [rawDomain || 'Software Engineer'],\n    terms: normalizeText(rawDomain || '').split(/\\s+/).filter(t => t.length > 2),\n  })];\n}\n\nfunction jobSeniorityBlocked(title, domainSlug, extraBlocklist) {\n  const t = normalizeText(title);\n  const hard = [\n    /\\bsenior\\b/, /\\bsr\\b/, /\\bstaff\\b/, /\\bprincipal\\b/, /\\blead\\b/,\n    /\\bdirector\\b/, /\\bhead\\b/, /\\bvp\\b/, /\\bchief\\b/, /\\bcto\\b/, /\\bciso\\b/,\n    /\\bengineering manager\\b/, /\\bsoftware development manager\\b/, /\\bteam manager\\b/,\n  ];\n  if (hard.some(re => re.test(t))) return true;\n  const cleanedBlocklist = (Array.isArray(extraBlocklist) ? extraBlocklist : [])\n    .map(normalizeText)\n    .filter(v => v && v !== 'manager');\n  return cleanedBlocklist.some(word => containsPhrase(t, word));\n}\n\nfunction matchJobToDomains(job, selectedDomains) {\n  const titleNorm = normalizeText(job.title);\n  const titleBase = stripTitleNoise(job.title);\n  const hay = `${titleNorm} ${normalizeText(job.jd_text)} ${normalizeText(job.company)} ${normalizeText(job.source)}`;\n  let best = null;\n  for (const domain of selectedDomains) {\n    let bestAlias = '';\n    let bestRole = '';\n    let aliasScore = 0;\n    for (const role of domain.coreRoles) {\n      const r = stripTitleNoise(role);\n      if (r && titleBase.includes(r)) {\n        bestAlias = role;\n        bestRole = role;\n        aliasScore = Math.max(aliasScore, 78);\n        break;\n      }\n    }\n    if (!bestAlias) {\n      for (const alias of domain.aliasNeedles) {\n        if (alias.length >= 4 && (titleBase.includes(alias) || titleNorm.includes(alias))) {\n          bestAlias = alias;\n          bestRole = domain.coreRoles.find(role => stripTitleNoise(role) === alias) || alias;\n          aliasScore = Math.max(aliasScore, 70);\n          break;\n        }\n      }\n    }\n    const keywordHits = domain.normalizedTerms.filter(term => term.length >= 3 && containsPhrase(hay, term));\n    const keywordScore = Math.min(25, keywordHits.length * 5);\n    if (!bestAlias && keywordHits.length < 3) continue;\n    const score = aliasScore + keywordScore;\n    if (!best || score > best.match_score) {\n      best = {\n        domain_slug: domain.slug,\n        domain_label: domain.label,\n        matched_role: bestRole || domain.label,\n        matched_alias: bestAlias || keywordHits.slice(0, 3).join(', '),\n        match_score: Math.min(100, score),\n        keyword_hits: keywordHits.slice(0, 12).join(', '),\n        alias_count: domain.aliasCount,\n      };\n    }\n  }\n  return best;\n}\n\nconst COMPANY_BOARDS = {\n  greenhouse: ['stripe', 'openai', 'anthropic', 'intercom', 'hubspot', 'ramp', 'brex', 'figma', 'databricks', 'airbnb', 'retool', 'vercel', 'snowflake', 'mongodb', 'datadog', 'discord', 'reddit', 'notion', 'coinbase', 'plaid', 'zapier', 'asana', 'lyft', 'doordash', 'instacart', 'robinhood', 'affirm', 'chime', 'calendly', 'gusto', 'rippling', 'box', 'dropbox', 'twilio', 'okta', 'cloudflare', 'hashicorp', 'elastic', 'gitlab', 'sentry', 'grafana', 'segment', 'amplitude', 'mixpanel', 'attentive', 'klaviyo', 'shopify', 'block', 'toast', 'canva', 'wise', 'deliveroo', 'monzo', 'checkout', 'personio', 'monday', 'miro', 'contentful', 'adyen', 'duolingo', 'roblox', 'twitch', 'pinterest', 'yelp', 'indeed', 'mozilla', 'canonical', 'automattic', 'digitalocean', 'fastly', 'snyk', 'lacework', 'wiz', 'crowdstrike', 'sentinelone', 'onepassword', 'bitwarden', 'docker', 'github', 'gitpod', 'circleci', 'buildkite', 'launchdarkly', 'honeycomb', 'newrelic', 'confluent', 'cockroachlabs', 'timescale', 'redis', 'supabase', 'neon', 'planetscale', 'clickhouse', 'motherduck', 'dbt', 'airbyte', 'prefect', 'dagster', 'huggingface', 'cohere', 'mistral', 'waymo'],\n  lever: ['netflix', 'spotify', 'palantir', 'scaleai', 'replicate', 'mistral', 'huggingface', 'plaid', 'attentive', 'benchling', 'coursera', 'turo', 'quora', 'udacity', 'mattermost', 'sourcegraph', 'postman', 'loom', 'replit', 'webflow', 'make', 'zapier', 'gusto', 'instabase', 'segment', 'launchdarkly', 'cockroachlabs', 'parsec', 'duolingo', 'mercury', 'verkada', 'nuro', 'niantic', 'mapbox', 'planet', 'sondermind', 'samsara', 'anduril', 'zipline', 'rippling', 'figma'],\n  ashby: ['linear', 'supabase', 'posthog', 'runwayml', 'perplexity', 'elevenlabs', 'cursor', 'mercury', 'modal', 'pinecone', 'astral', 'turso', 'railway', 'render', 'flyio', 'prisma', 'incident', 'temporal', 'tailscale', 'wandb', 'weightsandbiases', 'vercel', 'anthropic', 'openai', 'adept', 'harvey', 'heygen', 'synthesia', 'poolside', 'gretel', 'modal-labs', 'langchain'],\n};\nCOMPANY_BOARDS.greenhouse.push(...['airtable', 'grammarly', 'algolia', 'sumologic', 'mongodbinc', 'asana-rebel', 'gitlabinc', 'datadoghq', 'elasticco', 'hashicorpinc', 'jetbrains', 'linear', 'replit', 'webflow', 'postman', 'loom', 'zapierinc', 'mural', 'miroinc', 'typeform']);\nCOMPANY_BOARDS.lever.push(...['airtable', 'algolia', 'grammarly', 'mural', 'typeform', 'figma-inc', 'linear', 'perplexity', 'elevenlabs', 'cursor', 'modal', 'pinecone', 'tailscale', 'temporal', 'prisma']);\nCOMPANY_BOARDS.ashby.push(...['airtable', 'grammarly', 'algolia', 'mural', 'typeform', 'incident-io', 'cursor-ai', 'perplexity-ai', 'eleven-labs', 'pinecone-io', 'temporal-technologies', 'tailscale-inc']);\n\nasync function runLimited(tasks, limit) {\n  const out = [];\n  let idx = 0;\n  async function worker() {\n    while (idx < tasks.length) {\n      const current = idx++;\n      out[current] = await tasks[current]();\n    }\n  }\n  await Promise.all(Array.from({ length: Math.min(limit, tasks.length) }, worker));\n  return out;\n}\n\nfunction envValue(name, fallback = '') {\n  try {\n    const value = $env[name];\n    return value === undefined || value === null || value === '' ? fallback : value;\n  } catch (e) {\n    return fallback;\n  }\n}\n\nfunction envNumber(name, fallback, min, max) {\n  const raw = envValue(name, fallback);\n  const n = Number(raw === undefined || raw === null || raw === '' ? fallback : raw);\n  if (!Number.isFinite(n)) return fallback;\n  return Math.max(min, Math.min(max, Math.floor(n)));\n}\n\nfunction sleep(ms) {\n  return new Promise(resolve => setTimeout(resolve, ms));\n}\n\nfunction retryDelayMs(attempt, baseMs) {\n  const jitter = Math.floor(Math.random() * Math.min(500, baseMs));\n  return Math.min(15000, baseMs * Math.pow(2, attempt - 1) + jitter);\n}\n\nfunction statusFromResponse(res) {\n  const status = Number(\n    res?.statusCode ||\n    res?.status ||\n    res?.body?.statusCode ||\n    res?.body?.status ||\n    res?.body?.error?.status ||\n    0\n  );\n  return Number.isFinite(status) ? status : 0;\n}\n\nfunction bodyFromResponse(res) {\n  return res && Object.prototype.hasOwnProperty.call(res, 'body') ? res.body : res;\n}\n\nfunction isRetryableStatus(status) {\n  return [408, 425, 429, 500, 502, 503, 504].includes(Number(status));\n}\n\nconst input = $('Set Input').first().json;\nconst loaded = $input.first().json;\nconst domainRaw = input.domain || input.domain_slug || 'AI, Machine Learning and GenAI';\nconst country = input.country || 'IE';\nconst telegramChatId = input.telegram_chat_id || input.chat_id || input.chatId || '';\nconst selectedDomains = resolveSelectedDomains(domainRaw);\nconst selectedLabels = selectedDomains.map(d => d.label).join(', ');\nconst blocklist = loaded.blocklist || [];\nconst topSearchQueries = [...new Set(selectedDomains.flatMap(d => d.searchQueries || []).filter(Boolean))].slice(0, selectedDomains.length > 1 ? 6 : 5);\n\nconst sgaiKey = envValue('SCRAPEGRAPHAI_KEY') || envValue('SGAI_API_KEY');\nconst adzunaId = envValue('ADZUNA_APP_ID');\nconst adzunaKey = envValue('ADZUNA_APP_KEY');\nconst joobleKey = envValue('JOOBLE_KEY');\nconst serpKey = envValue('SERPAPI_KEY');\nconst sourceConcurrency = envNumber('SOURCE_CONCURRENCY', 8, 1, 30);\nconst sourceRetries = envNumber('SOURCE_RETRIES', 2, 0, 5);\nconst sourceTimeoutMs = envNumber('SOURCE_TIMEOUT_MS', 30000, 5000, 120000);\nconst sourceRetryBaseMs = envNumber('SOURCE_RETRY_BASE_MS', 750, 100, 10000);\nconst maxCompanyBoardsPerSource = envNumber('MAX_COMPANY_BOARDS_PER_SOURCE', envNumber('MAX_COMPANY_BOARDS', 0, 0, 1000), 0, 1000);\n\nconst adzunaCC = { IE: 'gb', AE: 'gb', AU: 'au', US: 'us', UK: 'gb' }[country] || 'gb';\nconst locName = { IE: 'Ireland', AE: 'United Arab Emirates', AU: 'Australia', US: 'United States', UK: 'United Kingdom' }[country] || 'Ireland';\n\nconst helpers = this.helpers;\nconst safe = async (name, opts) => {\n  let lastError = '';\n  let lastStatus = 0;\n  for (let attempt = 1; attempt <= sourceRetries + 1; attempt++) {\n    try {\n      const res = await helpers.httpRequest({\n        ...opts,\n        json: true,\n        returnFullResponse: true,\n        ignoreHttpStatusErrors: true,\n        timeout: sourceTimeoutMs,\n      });\n      const status = statusFromResponse(res);\n      const data = bodyFromResponse(res);\n      lastStatus = status;\n      if (isRetryableStatus(status) && attempt <= sourceRetries) {\n        await sleep(retryDelayMs(attempt, sourceRetryBaseMs));\n        continue;\n      }\n      const ok = !status || (status >= 200 && status < 400);\n      return {\n        source: name,\n        ok,\n        status,\n        attempts: attempt,\n        data,\n        error: ok ? '' : `http_${status || 'error'}`,\n      };\n    } catch (e) {\n      lastError = String(e).slice(0, 200);\n      if (attempt <= sourceRetries) {\n        await sleep(retryDelayMs(attempt, sourceRetryBaseMs));\n        continue;\n      }\n    }\n  }\n  return { source: name, ok: false, status: lastStatus, attempts: sourceRetries + 1, error: lastError || `http_${lastStatus || 'error'}` };\n};\n\nfunction boardList(list) {\n  const unique = [...new Set(list)];\n  return maxCompanyBoardsPerSource > 0 ? unique.slice(0, maxCompanyBoardsPerSource) : unique;\n}\n\nconst tasks = [];\nconst apiPages = selectedDomains.length > 1 ? 1 : 2;\n\nif (adzunaId && adzunaKey) for (const q of topSearchQueries) for (let p = 1; p <= apiPages; p++) {\n  tasks.push(() => safe(`adzuna:${q}:p${p}`, {\n    method: 'GET',\n    url: `https://api.adzuna.com/v1/api/jobs/${adzunaCC}/search/${p}`,\n    qs: { app_id: adzunaId, app_key: adzunaKey, results_per_page: 50, what: q, where: locName, max_days_old: 14 },\n  }));\n}\n\nif (joobleKey) for (const q of topSearchQueries) for (let p = 1; p <= apiPages; p++) {\n  tasks.push(() => safe(`jooble:${q}:p${p}`, {\n    method: 'POST',\n    url: `https://jooble.org/api/${joobleKey}`,\n    headers: { 'Content-Type': 'application/json' },\n    body: { keywords: q, location: locName, page: String(p) },\n  }));\n}\n\nfor (const b of boardList(COMPANY_BOARDS.greenhouse)) {\n  tasks.push(() => safe(`gh:${b}`, {\n    method: 'GET',\n    url: `https://boards-api.greenhouse.io/v1/boards/${b}/jobs?content=true`,\n  }));\n}\n\nfor (const c of boardList(COMPANY_BOARDS.lever)) {\n  tasks.push(() => safe(`lever:${c}`, {\n    method: 'GET',\n    url: `https://api.lever.co/v0/postings/${c}?mode=json`,\n  }));\n}\n\nfor (const c of boardList(COMPANY_BOARDS.ashby)) {\n  tasks.push(() => safe(`ashby:${c}`, {\n    method: 'GET',\n    url: `https://api.ashbyhq.com/posting-api/job-board/${c}?includeCompensation=true`,\n  }));\n}\n\ntasks.push(() => safe('remoteok', {\n  method: 'GET',\n  url: 'https://remoteok.com/api',\n  headers: { 'User-Agent': 'job-radar/1.0' },\n}));\n\nif (sgaiKey) {\n  const q = topSearchQueries[0] || domainRaw;\n  const sgaiTargets = [\n    { name: 'sgai:google-careers', url: `https://www.google.com/about/careers/applications/jobs/results/?q=${encodeURIComponent(q)}&location=${encodeURIComponent(locName)}` },\n    { name: 'sgai:apple-careers', url: `https://jobs.apple.com/en-us/search?search=${encodeURIComponent(q)}&sort=relevance&location=${country.toLowerCase()}-IRL` },\n    { name: 'sgai:meta-careers', url: `https://www.metacareers.com/jobs?q=${encodeURIComponent(q)}` },\n  ];\n  for (const t of sgaiTargets) {\n    tasks.push(() => safe(t.name, {\n      method: 'POST',\n      url: 'https://v2-api.scrapegraphai.com/api/extract',\n      headers: { 'SGAI-APIKEY': sgaiKey, 'Content-Type': 'application/json' },\n      body: {\n        url: t.url,\n        prompt: 'Extract every job posting visible on this page. Return strict JSON: {\"jobs\":[{\"title\":\"\",\"location\":\"\",\"url\":\"\",\"department\":\"\"}]}. Include up to 50 jobs.',\n        output_schema: { type: 'object', properties: { jobs: { type: 'array', items: { type: 'object', properties: { title: { type: 'string' }, location: { type: 'string' }, url: { type: 'string' }, department: { type: 'string' } }, required: ['title', 'url'] } } } },\n      },\n    }));\n  }\n}\n\nif (serpKey) for (const q of topSearchQueries.slice(0, 3)) {\n  tasks.push(() => safe(`serpapi:${q}`, {\n    method: 'GET',\n    url: 'https://serpapi.com/search.json',\n    qs: { engine: 'google_jobs', q: `${q} ${locName}`, hl: 'en', api_key: serpKey },\n  }));\n}\n\nconst results = await runLimited(tasks, sourceConcurrency);\nconst now = new Date().toISOString();\nconst all = [];\nconst debug = [];\n\nfor (const r of results) {\n  if (!r || !r.ok) {\n    debug.push(`${r && r.source ? r.source : 'unknown'}:ERR:${r?.status || 'no_status'}:a${r?.attempts || 0}`);\n    continue;\n  }\n  let jobs = [];\n  const s = r.source;\n  try {\n    if (s.startsWith('adzuna:')) {\n      jobs = (r.data.results || []).map(j => ({ source: 'adzuna', title: j.title, company: j.company?.display_name, location: j.location?.display_name, url: j.redirect_url, jd_text: j.description, posted_at: j.created, raw: j }));\n    } else if (s.startsWith('jooble:')) {\n      jobs = (r.data.jobs || []).map(j => ({ source: 'jooble', title: j.title, company: j.company, location: j.location, url: j.link, jd_text: j.snippet, posted_at: j.updated, raw: j }));\n    } else if (s.startsWith('gh:')) {\n      const co = s.split(':')[1];\n      jobs = (r.data.jobs || []).map(j => ({ source: s, title: j.title, company: co, location: j.location?.name, url: j.absolute_url, jd_text: (j.content || '').replace(/<[^>]+>/g, ' ').slice(0, 4000), posted_at: j.updated_at, raw: j }));\n    } else if (s.startsWith('lever:')) {\n      const co = s.split(':')[1];\n      jobs = (Array.isArray(r.data) ? r.data : []).map(j => ({ source: s, title: j.text, company: co, location: j.categories?.location, url: j.hostedUrl, jd_text: (j.descriptionPlain || '').slice(0, 4000), posted_at: new Date(j.createdAt || Date.now()).toISOString(), raw: j }));\n    } else if (s.startsWith('ashby:')) {\n      const co = s.split(':')[1];\n      jobs = (r.data.jobs || []).map(j => ({ source: s, title: j.title, company: co, location: j.locationName || j.location, url: j.jobUrl || j.applyUrl, jd_text: (j.descriptionPlain || '').slice(0, 4000), posted_at: j.publishedDate || now, raw: j }));\n    } else if (s === 'remoteok') {\n      jobs = (Array.isArray(r.data) ? r.data.slice(1) : []).map(j => ({ source: 'remoteok', title: j.position, company: j.company, location: j.location || 'Remote', url: j.url, jd_text: (j.description || '').replace(/<[^>]+>/g, ' ').slice(0, 4000), posted_at: j.date, raw: j }));\n    } else if (s.startsWith('sgai:')) {\n      const arr = r.data?.result?.jobs || r.data?.jobs || [];\n      jobs = arr.map(j => ({ source: s, title: j.title, company: s.split(':')[1].split('-')[0], location: j.location, url: j.url, jd_text: j.department || '', posted_at: now, raw: j }));\n    } else if (s.startsWith('serpapi:')) {\n      jobs = (r.data.jobs_results || []).map(j => ({ source: 'serpapi', title: j.title, company: j.company_name, location: j.location, url: j.related_links?.[0]?.link || j.share_link, jd_text: (j.description || '').slice(0, 4000), posted_at: now, raw: j }));\n    }\n  } catch (e) {\n    debug.push(`${s}:parse-err`);\n  }\n  jobs = jobs.filter(j => j && j.title && j.url);\n  debug.push(`${s}:${jobs.length}`);\n  all.push(...jobs);\n}\n\nconst seenUrl = new Set();\nconst dedup = all.filter(j => {\n  const key = normalizeText(j.url).replace(/\\s/g, '');\n  if (!key || seenUrl.has(key)) return false;\n  seenUrl.add(key);\n  return true;\n});\n\nconst filtered = dedup.map(j => {\n  if (jobSeniorityBlocked(j.title, selectedDomains[0]?.slug, blocklist)) return null;\n  const match = matchJobToDomains(j, selectedDomains);\n  if (!match) return null;\n  const titleLow = normalizeText(j.title);\n  return {\n    ...match,\n    hash: stableHash(j.url),\n    country,\n    telegram_chat_id: telegramChatId,\n    source: j.source,\n    title: j.title,\n    title_normalized: titleLow,\n    company: j.company || 'Unknown',\n    location: j.location || locName,\n    remote_type: /remote/i.test(`${j.location || ''} ${j.title}`) ? 'remote' : null,\n    url: j.url,\n    jd_text: (j.jd_text || '').slice(0, 4000),\n    raw_payload: j.raw || j,\n    posted_at: j.posted_at || now,\n    filter_status: 'passed',\n    keyword_score: Math.min(1, Number(match.match_score || 0) / 100),\n    _debug: debug.join(' | '),\n    _rate_limit_config: `source_concurrency=${sourceConcurrency}; source_retries=${sourceRetries}; timeout_ms=${sourceTimeoutMs}; max_company_boards_per_source=${maxCompanyBoardsPerSource || 'all'}`,\n    _selected_domains: selectedLabels,\n    _search_queries: topSearchQueries.join(', '),\n  };\n}).filter(Boolean);\n\nfiltered.sort((a, b) => (b.match_score - a.match_score) || (b.keyword_score - a.keyword_score));\n\nif (filtered.length === 0) {\n  return [{\n    json: {\n      _empty: true,\n      sql: 'SELECT 1 WHERE FALSE',\n      _debug: debug.join(' | '),\n      _all_count: all.length,\n      _rate_limit_config: `source_concurrency=${sourceConcurrency}; source_retries=${sourceRetries}; timeout_ms=${sourceTimeoutMs}; max_company_boards_per_source=${maxCompanyBoardsPerSource || 'all'}`,\n      _selected_domains: selectedLabels,\n      _search_queries: topSearchQueries.join(', '),\n      _domain_alias_counts: selectedDomains.map(d => `${d.label}:${d.aliasCount}`).join(' | '),\n    },\n  }];\n}\n\nreturn filtered.slice(0, 120).map(j => ({ json: { ...j, sql: buildSql(j) } }));\n"
+      },
+      "id": "n5",
+      "name": "Scrape + Filter",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json.sql }}",
+        "options": {}
+      },
+      "id": "n6",
+      "name": "Upsert Jobs",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1200,
+        300
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "OUDCM3bFPecgX46T",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "function num(v) {\n  const n = Number(v);\n  return Number.isFinite(n) ? n : 0;\n}\n\nfunction deterministicScore(job) {\n  const sourceBonus =\n    job.source_quality === 'direct_ats_board'\n      ? 5\n      : job.source_quality === 'ai_scraped_company_page'\n        ? 3\n        : 0;\n  const liveBonus = job.link_ok ? 4 : 0;\n  const score =\n    num(job.apply_ready_score) * 0.62 +\n    num(job.match_score) * 0.32 +\n    sourceBonus +\n    liveBonus;\n  return Math.max(0, Math.min(100, Math.round(score)));\n}\n\nfunction deterministicReason(job) {\n  const parts = [];\n  if (job.link_ok) parts.push('verified live link');\n  if (job.source_quality === 'direct_ats_board') parts.push('direct company board');\n  if (job.matched_role) parts.push(`matched ${job.matched_role}`);\n  if (job.keyword_hits) parts.push(`keywords: ${job.keyword_hits}`);\n  return parts.length ? parts.join(', ') : 'best available local match';\n}\n\nconst input = $('Set Input').first().json;\nconst topN = Number(input.top_n || 10);\nconst items = $input.all().map(i => i.json).filter(j => j && j.id && j.title);\nconst telegramChatId = input.telegram_chat_id || input.chat_id || input.chatId || items[0]?.telegram_chat_id || '';\n\nif (items.length === 0) {\n  return [{ json: { skip: true, reason: 'no_jobs', count: 0, domain: input.domain, country: input.country } }];\n}\n\nconst domainLabel = items[0]?.domain_label || input.domain || 'Selected IT domain';\nconst aliasCount = items[0]?.alias_count || 0;\n\nconst top = [...items]\n  .sort((a, b) =>\n    deterministicScore(b) - deterministicScore(a) ||\n    num(b.apply_ready_score) - num(a.apply_ready_score) ||\n    num(b.match_score) - num(a.match_score)\n  )\n  .slice(0, topN)\n  .map((job, i) => ({\n    ...job,\n    rank: i + 1,\n    id: job.id,\n    score: deterministicScore(job),\n    reason: deterministicReason(job),\n  }));\n\nreturn [{\n  json: {\n    skip: false,\n    count: items.length,\n    top,\n    domain: domainLabel,\n    country: input.country,\n    telegram_chat_id: telegramChatId,\n    alias_count: aliasCount,\n    _llm_raw: '',\n    _llm_status: 'disabled_no_paid_models',\n    _llm_model: 'none',\n    _ranker: 'deterministic',\n  },\n}];\n"
+      },
+      "id": "n7",
+      "name": "LLM Rank",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build concise digest. A native Telegram node sends it using n8n credentials.\nfunction escapeHtml(v) {\n  return String(v || '')\n    .replace(/&/g, '&amp;')\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;');\n}\n\nconst d = $input.first().json;\nconst telegramChatId = d.telegram_chat_id || d.chat_id || d.chatId || 8047661784;\nif (d.skip) {\n  return [{ json: { sent: false, reason: d.reason, count: d.count || 0, telegram_chat_id: telegramChatId } }];\n}\n\nconst top = Array.isArray(d.top) ? d.top : [];\nif (top.length === 0) {\n  return [{ json: { sent: false, reason: 'no_ranked_jobs', candidates: d.count || 0, domain: d.domain, country: d.country, telegram_chat_id: telegramChatId } }];\n}\n\nconst date = new Date().toISOString().slice(0, 10);\nconst lines = [`TOP ${top.length} - ${d.domain} - ${d.country} - ${date}`, ''];\nfor (const j of top) {\n  const link = j.final_url || j.url;\n  const linkStatus = j.link_status || 'unchecked';\n  const ready = Number.isFinite(Number(j.apply_ready_score)) ? Number(j.apply_ready_score) : 0;\n  lines.push(`${j.rank}. [${j.score}] ${j.company} - ${j.title}`);\n  lines.push(`   ${j.location || '-'} | ${j.reason || 'ranked match'}`);\n  lines.push(`   ${linkStatus} | ready ${ready}/100 | ${j.source_quality || j.source || 'unknown source'}`);\n  if (j.company_domain) lines.push(`   ${j.company_domain} | ${j.crm_status || 'ready_to_review'}`);\n  lines.push(`   Apply: ${link}`);\n  if (j.company_careers_url) lines.push(`   Careers: ${j.company_careers_url}`);\n  lines.push('');\n}\nconst text = lines.join('\\n');\nconst telegramText = text.length > 3900\n  ? `${text.slice(0, 3860)}\\n\\n...truncated for Telegram. Full ranked data is in n8n execution output.`\n  : text;\n\nreturn [{\n  json: {\n    sent: false,\n    reason: 'ready_for_native_telegram_node',\n    count: top.length,\n    candidates: d.count,\n    domain: d.domain,\n    country: d.country,\n    telegram_chat_id: telegramChatId,\n    top,\n    digest_text: text,\n    telegram_text: telegramText,\n    telegram_html: escapeHtml(telegramText),\n    digest_preview: text.slice(0, 1000)\n  }\n}];\n"
+      },
+      "id": "n8",
+      "name": "Build Digest",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1920,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $input.first().json;\nreturn [{\n  json: {\n    ...d,\n    logged: false,\n    log_reason: 'runs_table_not_present_in_lazyscaper_schema',\n    finished_at: new Date().toISOString()\n  }\n}];\n"
+      },
+      "id": "n9",
+      "name": "Log Run",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2160,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "function normalizeText(v) {\n  return String(v || '')\n    .toLowerCase()\n    .replace(/&/g, ' and ')\n    .replace(/[^a-z0-9\\s.-]/g, ' ')\n    .replace(/\\s+/g, ' ')\n    .trim();\n}\n\nfunction safeUrl(v) {\n  const raw = String(v || '').trim();\n  const m = raw.match(/^(https?):\\/\\/([^/?#\\s]+)([^\\s]*)?$/i);\n  if (!m) return null;\n  const protocol = `${m[1].toLowerCase()}:`;\n  const host = m[2].replace(/^[^@]+@/, '');\n  const hostname = host.split(':')[0].toLowerCase();\n  if (!hostname || !['http:', 'https:'].includes(protocol)) return null;\n  return { protocol, hostname, href: raw, toString: () => raw };\n}\n\nfunction baseDomain(hostname) {\n  const h = String(hostname || '').toLowerCase().replace(/^www\\./, '');\n  const parts = h.split('.').filter(Boolean);\n  if (parts.length <= 2) return h;\n  const twoPartTlds = new Set(['co.uk', 'com.au', 'com.br', 'co.jp', 'co.in', 'com.sg', 'com.mx']);\n  const lastTwo = parts.slice(-2).join('.');\n  if (twoPartTlds.has(lastTwo) && parts.length >= 3) return parts.slice(-3).join('.');\n  return parts.slice(-2).join('.');\n}\n\nfunction cleanCompanySlug(company) {\n  const cleaned = normalizeText(company)\n    .replace(/\\b(inc|incorporated|ltd|limited|llc|plc|gmbh|sa|ag|bv|company|technologies|technology|software|labs|ai)\\b/g, ' ')\n    .replace(/\\s+/g, '')\n    .replace(/[^a-z0-9-]/g, '');\n  return cleaned || normalizeText(company).replace(/\\s+/g, '').replace(/[^a-z0-9-]/g, '');\n}\n\nfunction inferCompanyDomain(jobUrl, company) {\n  const u = safeUrl(jobUrl);\n  const host = u ? baseDomain(u.hostname) : '';\n  const atsHosts = [\n    'greenhouse.io', 'lever.co', 'ashbyhq.com', 'workdayjobs.com', 'myworkdayjobs.com',\n    'smartrecruiters.com', 'bamboohr.com', 'jobvite.com', 'icims.com', 'remoteok.com',\n    'adzuna.com', 'jooble.org', 'serpapi.com',\n  ];\n  if (host && !atsHosts.some(ats => host.endsWith(ats))) return host;\n  const slug = cleanCompanySlug(company);\n  return slug ? `${slug}.com` : '';\n}\n\nfunction sourceQuality(source, url) {\n  const s = normalizeText(source);\n  const host = safeUrl(url)?.hostname || '';\n  if (s.startsWith('gh') || s.startsWith('lever') || s.startsWith('ashby')) return 'direct_ats_board';\n  if (s.includes('remoteok')) return 'remote_board';\n  if (s.includes('adzuna') || s.includes('jooble') || s.includes('serpapi')) return 'aggregator';\n  if (s.includes('sgai')) return 'ai_scraped_company_page';\n  if (/greenhouse|lever|ashby|workday|smartrecruiters/i.test(host)) return 'direct_ats_board';\n  return 'unknown';\n}\n\nfunction calcApplyReadyScore(job) {\n  let score = 0;\n  score += Math.min(45, Math.max(0, Number(job.match_score || 0) * 0.45));\n  if (job.link_ok) score += 30;\n  if (job.source_quality === 'direct_ats_board') score += 15;\n  else if (job.source_quality === 'ai_scraped_company_page') score += 10;\n  else if (job.source_quality === 'remote_board') score += 8;\n  else if (job.source_quality === 'aggregator') score += 3;\n  if (job.company_domain) score += 5;\n  if (job.final_url && job.final_url !== job.url) score += 5;\n  return Math.max(0, Math.min(100, Math.round(score)));\n}\n\nasync function runLimited(items, limit, fn) {\n  const out = [];\n  let idx = 0;\n  async function worker() {\n    while (idx < items.length) {\n      const current = idx++;\n      out[current] = await fn(items[current], current);\n    }\n  }\n  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));\n  return out;\n}\n\nfunction envValue(name, fallback = '') {\n  try {\n    const value = $env[name];\n    return value === undefined || value === null || value === '' ? fallback : value;\n  } catch (e) {\n    return fallback;\n  }\n}\n\nfunction envNumber(name, fallback, min, max) {\n  const raw = envValue(name, fallback);\n  const n = Number(raw === undefined || raw === null || raw === '' ? fallback : raw);\n  if (!Number.isFinite(n)) return fallback;\n  return Math.max(min, Math.min(max, Math.floor(n)));\n}\n\nfunction envBool(name, fallback) {\n  const raw = envValue(name, fallback ? 'true' : 'false');\n  if (raw === undefined || raw === null || raw === '') return fallback;\n  return !['0', 'false', 'no', 'off'].includes(String(raw).toLowerCase());\n}\n\nfunction sleep(ms) {\n  return new Promise(resolve => setTimeout(resolve, ms));\n}\n\nfunction retryDelayMs(attempt, baseMs) {\n  const jitter = Math.floor(Math.random() * Math.min(500, baseMs));\n  return Math.min(12000, baseMs * Math.pow(2, attempt - 1) + jitter);\n}\n\nfunction isRetryableStatus(status) {\n  return [408, 425, 429, 500, 502, 503, 504].includes(Number(status));\n}\n\nconst helpers = this.helpers;\nconst verifyConcurrency = envNumber('VERIFY_CONCURRENCY', 6, 1, 20);\nconst verifyRetries = envNumber('VERIFY_RETRIES', 2, 0, 5);\nconst verifyTimeoutMs = envNumber('VERIFY_TIMEOUT_MS', 15000, 3000, 60000);\nconst verifyRetryBaseMs = envNumber('VERIFY_RETRY_BASE_MS', 600, 100, 10000);\nconst verifyCompanyLinks = envBool('VERIFY_COMPANY_LINKS', true);\nconst companyLinkVerifyLimit = envNumber('COMPANY_LINK_VERIFY_LIMIT', 60, 0, 500);\nconst publicUrlCache = new Map();\n\nasync function verifyJobUrl(url) {\n  const u = safeUrl(url);\n  if (!u) {\n    return { link_ok: false, link_status: 'invalid_url', link_status_code: 0, final_url: url || '' };\n  }\n\n  const request = async method => {\n    let lastError = '';\n    let lastStatus = 0;\n    for (let attempt = 1; attempt <= verifyRetries + 1; attempt++) {\n      try {\n        const res = await helpers.httpRequest({\n          url: u.toString(),\n          method,\n          json: false,\n          returnFullResponse: true,\n          ignoreHttpStatusErrors: true,\n          timeout: verifyTimeoutMs,\n          headers: {\n            'User-Agent': 'job-radar-link-verifier/1.0',\n            'Accept': 'text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8',\n          },\n        });\n        const statusCode = Number(res?.statusCode || res?.status || 0);\n        lastStatus = statusCode;\n        if (isRetryableStatus(statusCode) && attempt <= verifyRetries) {\n          await sleep(retryDelayMs(attempt, verifyRetryBaseMs));\n          continue;\n        }\n        const body = typeof res?.body === 'string' ? res.body.slice(0, 1200) : '';\n        const finalUrl = res?.request?.uri?.href || res?.responseUrl || res?.url || u.toString();\n        return { ok: true, statusCode, body, finalUrl, attempts: attempt, method };\n      } catch (e) {\n        lastError = String(e).slice(0, 160);\n        if (attempt <= verifyRetries) {\n          await sleep(retryDelayMs(attempt, verifyRetryBaseMs));\n          continue;\n        }\n      }\n    }\n    return { ok: false, statusCode: lastStatus, error: lastError || `http_${lastStatus || 'error'}`, finalUrl: u.toString(), body: '', attempts: verifyRetries + 1, method };\n  };\n\n  let r = await request('HEAD');\n  if (!r.ok || !r.statusCode || r.statusCode === 405 || r.statusCode === 403 || r.statusCode >= 400) {\n    const getResult = await request('GET');\n    if (getResult.ok || getResult.statusCode || getResult.body) r = getResult;\n  }\n\n  const expiredText = /job no longer|position has been filled|not found|no longer accepting|closed|expired/i.test(r.body || '');\n  const linkOk = r.statusCode >= 200 && r.statusCode < 400 && !expiredText;\n  return {\n    link_ok: linkOk,\n    link_status: linkOk ? 'live' : (expiredText ? 'expired_or_closed' : `http_${r.statusCode || 'error'}`),\n    link_status_code: r.statusCode || 0,\n    final_url: r.finalUrl || u.toString(),\n    link_error: r.error || '',\n    link_attempts: r.attempts || 1,\n    link_check_method: r.method || '',\n  };\n}\n\nasync function verifyPublicUrl(url) {\n  const u = safeUrl(url);\n  if (!u) return { ok: false, status: 'invalid_url', status_code: 0, final_url: url || '' };\n  const key = u.toString();\n  if (!verifyCompanyLinks) return { ok: null, status: 'skipped_disabled', status_code: 0, final_url: key };\n  if (!publicUrlCache.has(key)) {\n    if (companyLinkVerifyLimit <= 0 || publicUrlCache.size >= companyLinkVerifyLimit) {\n      return { ok: null, status: 'skipped_limit', status_code: 0, final_url: key };\n    }\n    publicUrlCache.set(key, verifyJobUrl(key));\n  }\n  const v = await publicUrlCache.get(key);\n  return { ok: v.link_ok, status: v.link_status, status_code: v.link_status_code, final_url: v.final_url };\n}\n\nfunction publicFields(prefix, v) {\n  return {\n    [`${prefix}_ok`]: v.ok,\n    [`${prefix}_status`]: v.status,\n    [`${prefix}_status_code`]: v.status_code,\n    [`${prefix}_final_url`]: v.final_url,\n  };\n}\n\nconst items = $input.all().map(i => i.json).filter(j => j && j.title && j.url);\nif (items.length === 0) {\n  return [{ json: { skip: true, reason: 'no_jobs_after_upsert', count: 0 } }];\n}\n\nconst enriched = await runLimited(items, verifyConcurrency, async job => {\n  const verify = await verifyJobUrl(job.url);\n  const finalUrl = verify.final_url || job.url;\n  const companyDomain = inferCompanyDomain(finalUrl, job.company);\n  const companyHomepage = companyDomain ? `https://${companyDomain}` : '';\n  const companyCareers = companyHomepage ? `${companyHomepage}/careers` : '';\n  const companyJobs = companyHomepage ? `${companyHomepage}/jobs` : '';\n  const companyContact = companyHomepage ? `${companyHomepage}/contact` : '';\n  const quality = sourceQuality(job.source, finalUrl);\n  const [homepageCheck, careersCheck, jobsCheck, contactCheck] = await Promise.all([\n    verifyPublicUrl(companyHomepage),\n    verifyPublicUrl(companyCareers),\n    verifyPublicUrl(companyJobs),\n    verifyPublicUrl(companyContact),\n  ]);\n  const out = {\n    ...job,\n    ...verify,\n    source_quality: quality,\n    company_domain: companyDomain,\n    company_homepage_url: companyHomepage,\n    company_careers_url: companyCareers,\n    company_jobs_url: companyJobs,\n    company_contact_url: companyContact,\n    ...publicFields('company_homepage', homepageCheck),\n    ...publicFields('company_careers', careersCheck),\n    ...publicFields('company_jobs', jobsCheck),\n    ...publicFields('company_contact', contactCheck),\n    company_linkedin_search_url: `https://www.linkedin.com/search/results/companies/?keywords=${encodeURIComponent(job.company || '')}`,\n    company_google_jobs_search_url: `https://www.google.com/search?q=${encodeURIComponent(`${job.company || ''} careers ${job.title || ''}`)}`,\n    contact_policy: 'company_pages_only_no_personal_email_scraping',\n    crm_status: verify.link_ok ? 'ready_to_review' : 'needs_link_review',\n    next_action: verify.link_ok ? 'review_apply_page' : 'check_or_replace_link',\n    discovered_at: new Date().toISOString(),\n    _verify_config: `verify_concurrency=${verifyConcurrency}; verify_retries=${verifyRetries}; timeout_ms=${verifyTimeoutMs}; verify_company_links=${verifyCompanyLinks}; company_link_verify_limit=${companyLinkVerifyLimit}`,\n  };\n  out.apply_ready_score = calcApplyReadyScore(out);\n  return out;\n});\n\nenriched.sort((a, b) => (b.apply_ready_score - a.apply_ready_score) || (b.match_score - a.match_score));\nreturn enriched.map(j => ({ json: j }));\n"
+      },
+      "id": "n10",
+      "name": "Verify + Enrich",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.telegram_chat_id || 8047661784 }}",
+        "text": "={{ $json.telegram_html || $json.telegram_text || $json.digest_preview || \"No Job Radar digest text generated.\" }}",
+        "additionalFields": {
+          "disable_web_page_preview": true,
+          "parse_mode": "HTML",
+          "appendAttribution": false
+        }
+      },
+      "id": "n11",
+      "name": "Telegram Send Digest",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2400,
+        300
+      ],
+      "continueOnFail": true,
+      "credentials": {
+        "telegramApi": {
+          "id": "j41JdTQ7d7SlHbqC",
+          "name": "Telegram CV Bot"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule 7am": {
+      "main": [
+        [
+          {
+            "node": "Set Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook On-demand": {
+      "main": [
+        [
+          {
+            "node": "Set Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Input": {
+      "main": [
+        [
+          {
+            "node": "Load Profile",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Profile": {
+      "main": [
+        [
+          {
+            "node": "Scrape + Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Scrape + Filter": {
+      "main": [
+        [
+          {
+            "node": "Upsert Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Jobs": {
+      "main": [
+        [
+          {
+            "node": "Verify + Enrich",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LLM Rank": {
+      "main": [
+        [
+          {
+            "node": "Build Digest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify + Enrich": {
+      "main": [
+        [
+          {
+            "node": "LLM Rank",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Workflow Trigger": {
+      "main": [
+        [
+          {
+            "node": "Set Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Digest": {
+      "main": [
+        [
+          {
+            "node": "Log Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Run": {
+      "main": [
+        [
+          {
+            "node": "Telegram Send Digest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [],
+  "id": "mTxs53t7BhM3qVHM"
+}
