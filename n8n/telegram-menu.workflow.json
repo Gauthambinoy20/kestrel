@@ -1,0 +1,936 @@
+{
+  "name": "Job Radar Telegram Menu",
+  "id": "jobradarmenubot0001",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ]
+      },
+      "id": "menu-trigger",
+      "name": "Telegram Menu Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.2,
+      "webhookId": "job-radar-telegram-menu",
+      "position": [
+        120,
+        360
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "j41JdTQ7d7SlHbqC",
+          "name": "Telegram CV Bot"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "menu-execute-trigger",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [
+        120,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "function escapeHtml(v) {\n  return String(v || '')\n    .replace(/&/g, '&amp;')\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;');\n}\n\nfunction sqlString(v) {\n  return `'${String(v || '').replace(/'/g, \"''\")}'`;\n}\n\nconst domains = [\n  { label: 'AI, Machine Learning and GenAI', terms: ['ai', 'machine learning', 'ml', 'data ai', 'analytics', 'automation', 'genai'] },\n  { label: 'Software Engineering', terms: ['software', 'developer', 'engineer', 'full stack', 'backend', 'frontend'] },\n  { label: 'Data Engineering', terms: ['data', 'analytics', 'data science', 'data management', 'pipeline', 'business intelligence'] },\n  { label: 'Cybersecurity', terms: ['cyber', 'security', 'risk', 'technology risk', 'devsecops'] },\n  { label: 'Cloud Engineering', terms: ['cloud', 'aws', 'azure', 'infrastructure', 'devops'] },\n  { label: 'DevOps, Platform and Site Reliability', terms: ['devops', 'platform', 'sre', 'infrastructure', 'kubernetes'] },\n  { label: 'QA and Test Automation', terms: ['qa', 'test', 'automation test', 'sdet', 'quality'] },\n  { label: 'Product and Technical Product', terms: ['product', 'business analyst', 'solution engineering', 'commercial'] },\n];\n\nfunction resolveDomain(text) {\n  const clean = String(text || '').toLowerCase();\n  if (clean.includes('domain: ai') || clean.includes('ai / ml') || /\\b(ai|ml|genai)\\b/.test(clean)) return domains[0];\n  if (clean.includes('domain: software') || clean.includes('software')) return domains[1];\n  if (clean.includes('domain: data') || clean.includes('data')) return domains[2];\n  if (clean.includes('domain: cyber') || clean.includes('cyber') || clean.includes('security')) return domains[3];\n  if (clean.includes('domain: cloud') || clean.includes('cloud')) return domains[4];\n  if (clean.includes('domain: devops') || clean.includes('devops') || clean.includes('sre')) return domains[5];\n  if (clean.includes('domain: qa') || clean.includes('qa') || clean.includes('test')) return domains[6];\n  if (clean.includes('domain: product') || clean.includes('product')) return domains[7];\n  return null;\n}\n\nfunction resolveCountry(text) {\n  const clean = String(text || '').toLowerCase();\n  if (clean.includes('country: us') || /\\b(us|usa|united states)\\b/.test(clean)) return 'US';\n  if (clean.includes('country: uk') || /\\b(uk|gb|united kingdom|britain|england)\\b/.test(clean)) return 'UK';\n  if (clean.includes('country: ie') || /\\b(ie|ireland|dublin)\\b/.test(clean)) return 'IE';\n  return '';\n}\n\nfunction resolveTopN(text) {\n  const m = String(text || '').match(/\\b(?:top\\s*)?(5|10|15|20|25)\\b/i);\n  return m ? Number(m[1]) : 0;\n}\n\nfunction domainWhere(domainLabel) {\n  const domain = domains.find(d => d.label === domainLabel) || domains[0];\n  const cols = ['role_title', 'sector', 'location', 'notes', 'fit_reason'];\n  const clauses = [];\n  for (const term of domain.terms) {\n    for (const col of cols) clauses.push(`${col} ILIKE ${sqlString(`%${term}%`)}`);\n  }\n  return `(${clauses.join(' OR ')})`;\n}\n\nfunction companyWhere(domainLabel) {\n  const domain = domains.find(d => d.label === domainLabel) || domains[0];\n  const cols = ['company_name', 'sector', 'how_to_apply', 'website_text'];\n  const clauses = [];\n  for (const term of domain.terms) {\n    for (const col of cols) clauses.push(`${col} ILIKE ${sqlString(`%${term}%`)}`);\n  }\n  return `(${clauses.join(' OR ')})`;\n}\n\nfunction curatedSql(action, prefs) {\n  const limit = Math.max(5, Math.min(25, Number(prefs.top_n || 10)));\n  if (action === 'curated_roles') {\n    return `\n      SELECT 'curated_roles' AS result_type, company, role_title, sector, location, status,\n             apply_link, COALESCE(NULLIF(apply_url, ''), apply_link) AS link,\n             deadline_text, stamp_1g_ok, notes, fit_reason, priority_action, priority_score\n      FROM curated_roles\n      WHERE ${domainWhere(prefs.domain)}\n      ORDER BY priority_score DESC, id\n      LIMIT ${limit};\n    `;\n  }\n  if (action === 'target_companies') {\n    return `\n      SELECT 'target_companies' AS result_type, company_name AS company, sector,\n             COALESCE(NULLIF(website_url, ''), website_text) AS link,\n             how_to_apply, priority_score\n      FROM curated_companies\n      ORDER BY priority_score DESC, company_name\n      LIMIT ${limit};\n    `;\n  }\n  if (action === 'deadlines') {\n    return `\n      SELECT 'deadlines' AS result_type, company, role_title, deadline_text, action, link, priority_score\n      FROM curated_deadlines\n      ORDER BY priority_score DESC, id\n      LIMIT ${limit};\n    `;\n  }\n  if (action === 'watchlist') {\n    return `\n      SELECT 'watchlist' AS result_type, company, programme, expected_opening, notes, priority_score\n      FROM curated_watchlist\n      ORDER BY priority_score DESC, company\n      LIMIT ${limit};\n    `;\n  }\n  if (action === 'portals') {\n    return `\n      SELECT 'portals' AS result_type, portal, url, best_for, results_summary, quick_tip, usefulness, priority_score\n      FROM curated_portals\n      ORDER BY priority_score DESC, portal\n      LIMIT ${limit};\n    `;\n  }\n  return `SELECT 'empty' AS result_type WHERE false;`;\n}\n\nconst incoming = $input.first().json || {};\nconst message = incoming.message || {};\nconst chatId = message.chat?.id || 8047661784;\nconst text = String(message.text || '').trim();\nconst clean = text.toLowerCase();\n\nconst store = $getWorkflowStaticData('global');\nstore.telegramPrefs = store.telegramPrefs || {};\nconst key = String(chatId);\nconst prefs = store.telegramPrefs[key] || {\n  domain: 'AI, Machine Learning and GenAI',\n  country: 'IE',\n  top_n: 10,\n};\n\nconst domain = resolveDomain(text);\nif (domain) prefs.domain = domain.label;\n\nconst country = resolveCountry(text);\nif (country) prefs.country = country;\n\nconst topN = resolveTopN(text);\nif (topN) prefs.top_n = topN;\n\nstore.telegramPrefs[key] = prefs;\n\nlet action = 'menu';\nif (/(run live scan|run scan|scan|scrape|search)/.test(clean)) action = 'run_scan';\nelse if (/(latest live jobs|latest jobs|live jobs|latest|results)/.test(clean)) action = 'latest_results';\nelse if (/(curated roles|graduate roles|seed roles|best roles)/.test(clean)) action = 'curated_roles';\nelse if (/(target companies|companies|company targets)/.test(clean)) action = 'target_companies';\nelse if (/(deadline|urgent)/.test(clean)) action = 'deadlines';\nelse if (/(watchlist|2027)/.test(clean)) action = 'watchlist';\nelse if (/(portal|sources|job boards)/.test(clean)) action = 'portals';\nelse if (/(settings|configure|config|domain:|country:|top )/.test(clean)) action = 'settings';\nelse if (clean === '/start' || clean === 'start' || clean === 'hi' || clean === 'hello' || clean === 'back' || clean === 'home' || clean.includes('help')) action = 'menu';\n\nconst status = `<b>Job Radar</b>\\n${escapeHtml(prefs.domain)} · ${escapeHtml(prefs.country)} · top ${prefs.top_n}`;\nconst menuTextByAction = {\n  menu: `${status}\\n\\n<b>Main</b>\\nUse the buttons below. This Telegram chat is the control panel.`,\n  settings: `${status}\\n\\n<b>Settings</b>\\nChoose the domain, country, and result count. Then use curated roles or run a live scan.`,\n  run_scan: `${status}\\n\\nLive scan queued. I will send the ranked digest here when it finishes.`,\n  latest_results: `${status}\\n\\nFetching latest live-scraped jobs from the database.`,\n  curated_roles: `${status}\\n\\nFetching curated graduate/entry roles from the Excel seed data.`,\n  target_companies: `${status}\\n\\nFetching target companies from the Excel seed data.`,\n  deadlines: `${status}\\n\\nFetching urgent deadline/watch-now items from the Excel seed data.`,\n  watchlist: `${status}\\n\\nFetching 2027 watchlist companies and programme timing.`,\n  portals: `${status}\\n\\nFetching the best job portals/search sources from the Excel seed data.`,\n};\n\nreturn [{\n  json: {\n    chatId,\n    telegram_chat_id: chatId,\n    incomingText: text,\n    action,\n    domain: prefs.domain,\n    country: prefs.country,\n    top_n: prefs.top_n,\n    curated_sql: curatedSql(action, prefs),\n    menuText: menuTextByAction[action] || menuTextByAction.menu,\n  },\n}];\n"
+      },
+      "id": "build-command",
+      "name": "Build Command",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        400,
+        460
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "route-run-scan",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "run_scan",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "run_scan"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "route-latest-results",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "latest_results",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "latest_results"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "route-curated-roles",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "curated_roles",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "curated_roles"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "route-target-companies",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "target_companies",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "target_companies"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "route-deadlines",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "deadlines",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "deadlines"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "route-watchlist",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "watchlist",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "watchlist"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "route-portals",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "portals",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "portals"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "route-settings",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "settings",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "settings"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "8"
+        }
+      },
+      "id": "route-action",
+      "name": "Route Action",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        660,
+        460
+      ]
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": "mTxs53t7BhM3qVHM",
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      },
+      "id": "execute-job-radar",
+      "name": "Execute Job Radar Scan",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [
+        940,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.menuText }}",
+        "replyMarkup": "replyKeyboard",
+        "additionalFields": {
+          "disable_web_page_preview": true,
+          "parse_mode": "HTML",
+          "appendAttribution": false,
+          "resize_keyboard": true,
+          "one_time_keyboard": false
+        },
+        "replyKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "Curated Roles"
+                  },
+                  {
+                    "text": "Target Companies"
+                  }
+                ]
+              }
+            },
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "Deadlines"
+                  },
+                  {
+                    "text": "Watchlist 2027"
+                  }
+                ]
+              }
+            },
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "Run Live Scan"
+                  },
+                  {
+                    "text": "Latest Live Jobs"
+                  }
+                ]
+              }
+            },
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "Settings"
+                  },
+                  {
+                    "text": "Back"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "id": "send-scan-started",
+      "name": "Send Scan Started",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1210,
+        120
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "j41JdTQ7d7SlHbqC",
+          "name": "Telegram CV Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT title, company, location, original_url AS url, match_score, source, posted_date, updated_at FROM jobs WHERE country = $1 ORDER BY updated_at DESC NULLS LAST, posted_date DESC NULLS LAST, id DESC LIMIT $2;",
+        "options": {
+          "queryReplacement": "={{ $json.country + \",\" + Math.max(1, Math.min(25, Number($json.top_n || 10))) }}"
+        }
+      },
+      "id": "latest-jobs",
+      "name": "Latest Live Jobs",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        940,
+        280
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "OUDCM3bFPecgX46T",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "function escapeHtml(v) {\n  return String(v || '')\n    .replace(/&/g, '&amp;')\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;');\n}\n\nconst cmd = $('Build Command').first().json;\nconst jobs = $input.all().map(i => i.json).filter(j => j && j.title);\n\nconst lines = [\n  '<b>Latest Stored Jobs</b>',\n  `${escapeHtml(cmd.domain)} · ${escapeHtml(cmd.country)} · top ${cmd.top_n}`,\n  '',\n];\n\nif (jobs.length === 0) {\n  lines.push('No stored jobs yet. Press <b>Run Scan</b> first.');\n} else {\n  jobs.slice(0, Number(cmd.top_n || 10)).forEach((job, index) => {\n    const score = Number.isFinite(Number(job.match_score)) ? Math.round(Number(job.match_score)) : 0;\n    lines.push(`${index + 1}. <b>${escapeHtml(job.company || 'Unknown')}</b> - ${escapeHtml(job.title)}`);\n    lines.push(`${escapeHtml(job.location || '-')} · score ${score}`);\n    lines.push(escapeHtml(job.url || job.original_url || ''));\n    lines.push('');\n  });\n}\n\nconst text = lines.join('\\n');\n\nreturn [{\n  json: {\n    chatId: cmd.chatId,\n    menuText: text.length > 3900 ? `${text.slice(0, 3860)}\\n\\n...truncated` : text,\n    action: cmd.action,\n  },\n}];\n"
+      },
+      "id": "format-latest-jobs",
+      "name": "Format Latest Live Jobs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1210,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.menuText }}",
+        "replyMarkup": "replyKeyboard",
+        "additionalFields": {
+          "disable_web_page_preview": true,
+          "parse_mode": "HTML",
+          "appendAttribution": false,
+          "resize_keyboard": true,
+          "one_time_keyboard": false
+        },
+        "replyKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "Curated Roles"
+                  },
+                  {
+                    "text": "Target Companies"
+                  }
+                ]
+              }
+            },
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "Deadlines"
+                  },
+                  {
+                    "text": "Watchlist 2027"
+                  }
+                ]
+              }
+            },
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "Run Live Scan"
+                  },
+                  {
+                    "text": "Latest Live Jobs"
+                  }
+                ]
+              }
+            },
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "Settings"
+                  },
+                  {
+                    "text": "Back"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "id": "send-latest-jobs",
+      "name": "Send Latest Live Jobs",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1480,
+        280
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "j41JdTQ7d7SlHbqC",
+          "name": "Telegram CV Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json.curated_sql }}",
+        "options": {}
+      },
+      "id": "curated-query",
+      "name": "Curated Query",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        940,
+        500
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "OUDCM3bFPecgX46T",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "function escapeHtml(v) {\n  return String(v || '')\n    .replace(/&/g, '&amp;')\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;');\n}\n\nfunction cleanLink(v) {\n  const s = String(v || '').trim();\n  if (!s) return '';\n  return s.length > 180 ? `${s.slice(0, 177)}...` : s;\n}\n\nconst cmd = $('Build Command').first().json;\nconst action = cmd.action;\nconst rows = $input.all().map(i => i.json).filter(r => {\n  if (!r) return false;\n  if (action === 'target_companies') return Boolean(r.company);\n  if (action === 'curated_roles' || action === 'deadlines') return Boolean(r.role_title || r.company);\n  if (action === 'watchlist') return Boolean(r.company);\n  if (action === 'portals') return Boolean(r.portal);\n  return Object.keys(r).length > 0;\n});\nconst lines = [\n  `<b>${{\n    curated_roles: 'Curated Graduate Roles',\n    target_companies: 'Target Companies',\n    deadlines: 'Urgent Deadlines',\n    watchlist: 'Watchlist 2027',\n    portals: 'Job Portals',\n  }[action] || 'Curated Results'}</b>`,\n  `${escapeHtml(cmd.domain)} · ${escapeHtml(cmd.country)} · top ${cmd.top_n}`,\n  '',\n];\n\nif (rows.length === 0) {\n  lines.push('No matching curated rows found for this setting.');\n} else if (action === 'curated_roles') {\n  rows.forEach((r, i) => {\n    const link = cleanLink(r.link || r.apply_link);\n    lines.push(`${i + 1}. <b>${escapeHtml(r.company)}</b> - ${escapeHtml(r.role_title)}`);\n    lines.push(`${escapeHtml(r.status || 'check')} · ${escapeHtml(r.location || '-')} · ${escapeHtml(r.deadline_text || 'deadline TBC')}`);\n    if (r.stamp_1g_ok) lines.push(`Stamp 1G: ${escapeHtml(r.stamp_1g_ok)}`);\n    if (r.priority_action) lines.push(`Action: ${escapeHtml(r.priority_action)}`);\n    if (r.fit_reason) lines.push(escapeHtml(r.fit_reason));\n    else if (r.notes) lines.push(escapeHtml(r.notes));\n    if (link) lines.push(link);\n    lines.push('');\n  });\n} else if (action === 'target_companies') {\n  rows.forEach((r, i) => {\n    const link = cleanLink(r.link);\n    lines.push(`${i + 1}. <b>${escapeHtml(r.company)}</b>`);\n    if (r.sector) lines.push(escapeHtml(r.sector));\n    if (r.how_to_apply) lines.push(escapeHtml(r.how_to_apply));\n    if (link) lines.push(link);\n    lines.push('');\n  });\n} else if (action === 'deadlines') {\n  rows.forEach((r, i) => {\n    const link = cleanLink(r.link);\n    lines.push(`${i + 1}. <b>${escapeHtml(r.company || 'Check portal')}</b> - ${escapeHtml(r.role_title)}`);\n    lines.push(`${escapeHtml(r.deadline_text || 'deadline TBC')} · ${escapeHtml(r.action || 'verify now')}`);\n    if (link) lines.push(link);\n    lines.push('');\n  });\n} else if (action === 'watchlist') {\n  rows.forEach((r, i) => {\n    lines.push(`${i + 1}. <b>${escapeHtml(r.company)}</b>`);\n    if (r.programme) lines.push(escapeHtml(r.programme));\n    if (r.expected_opening) lines.push(`Expected: ${escapeHtml(r.expected_opening)}`);\n    if (r.notes) lines.push(escapeHtml(r.notes));\n    lines.push('');\n  });\n} else if (action === 'portals') {\n  rows.forEach((r, i) => {\n    lines.push(`${i + 1}. <b>${escapeHtml(r.portal)}</b> ${escapeHtml(r.usefulness || '')}`);\n    if (r.best_for) lines.push(escapeHtml(r.best_for));\n    if (r.results_summary) lines.push(escapeHtml(r.results_summary));\n    if (r.quick_tip) lines.push(escapeHtml(r.quick_tip));\n    if (r.url) lines.push(cleanLink(r.url));\n    lines.push('');\n  });\n}\n\nlines.push('<i>Seed data can be stale. Verify links/status before applying.</i>');\n\nconst text = lines.join('\\n');\n\nreturn [{\n  json: {\n    chatId: cmd.chatId,\n    menuText: text.length > 3900 ? `${text.slice(0, 3860)}\\n\\n...truncated` : text,\n    action,\n  },\n}];\n"
+      },
+      "id": "format-curated",
+      "name": "Format Curated Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1210,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.menuText }}",
+        "replyMarkup": "replyKeyboard",
+        "additionalFields": {
+          "disable_web_page_preview": true,
+          "parse_mode": "HTML",
+          "appendAttribution": false,
+          "resize_keyboard": true,
+          "one_time_keyboard": false
+        },
+        "replyKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "Curated Roles"
+                  },
+                  {
+                    "text": "Target Companies"
+                  }
+                ]
+              }
+            },
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "Deadlines"
+                  },
+                  {
+                    "text": "Watchlist 2027"
+                  }
+                ]
+              }
+            },
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "Run Live Scan"
+                  },
+                  {
+                    "text": "Latest Live Jobs"
+                  }
+                ]
+              }
+            },
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "Settings"
+                  },
+                  {
+                    "text": "Back"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "id": "send-curated",
+      "name": "Send Curated Results",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1480,
+        500
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "j41JdTQ7d7SlHbqC",
+          "name": "Telegram CV Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.menuText }}",
+        "replyMarkup": "replyKeyboard",
+        "additionalFields": {
+          "disable_web_page_preview": true,
+          "parse_mode": "HTML",
+          "appendAttribution": false,
+          "resize_keyboard": true,
+          "one_time_keyboard": false
+        },
+        "replyKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "Domain: AI/ML"
+                  },
+                  {
+                    "text": "Domain: Software"
+                  },
+                  {
+                    "text": "Domain: Data"
+                  }
+                ]
+              }
+            },
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "Domain: Cyber"
+                  },
+                  {
+                    "text": "Domain: Cloud"
+                  },
+                  {
+                    "text": "Domain: DevOps"
+                  }
+                ]
+              }
+            },
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "Country: IE"
+                  },
+                  {
+                    "text": "Country: UK"
+                  },
+                  {
+                    "text": "Country: US"
+                  }
+                ]
+              }
+            },
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "Top 10"
+                  },
+                  {
+                    "text": "Top 25"
+                  },
+                  {
+                    "text": "Back"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "id": "send-settings",
+      "name": "Send Settings",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        940,
+        740
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "j41JdTQ7d7SlHbqC",
+          "name": "Telegram CV Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.menuText }}",
+        "replyMarkup": "replyKeyboard",
+        "additionalFields": {
+          "disable_web_page_preview": true,
+          "parse_mode": "HTML",
+          "appendAttribution": false,
+          "resize_keyboard": true,
+          "one_time_keyboard": false
+        },
+        "replyKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "Run Live Scan"
+                  },
+                  {
+                    "text": "Latest Live Jobs"
+                  }
+                ]
+              }
+            },
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "Curated Roles"
+                  },
+                  {
+                    "text": "Target Companies"
+                  }
+                ]
+              }
+            },
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "Deadlines"
+                  },
+                  {
+                    "text": "Watchlist 2027"
+                  }
+                ]
+              }
+            },
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "Settings"
+                  },
+                  {
+                    "text": "Portals"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "id": "send-menu",
+      "name": "Send Main Menu",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        940,
+        900
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "j41JdTQ7d7SlHbqC",
+          "name": "Telegram CV Bot"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Telegram Menu Trigger": {
+      "main": [
+        [
+          {
+            "node": "Build Command",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Workflow Trigger": {
+      "main": [
+        [
+          {
+            "node": "Build Command",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Command": {
+      "main": [
+        [
+          {
+            "node": "Route Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Action": {
+      "main": [
+        [
+          {
+            "node": "Execute Job Radar Scan",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Latest Live Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Curated Query",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Curated Query",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Curated Query",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Curated Query",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Curated Query",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Settings",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Main Menu",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Job Radar Scan": {
+      "main": [
+        [
+          {
+            "node": "Send Scan Started",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Latest Live Jobs": {
+      "main": [
+        [
+          {
+            "node": "Format Latest Live Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Latest Live Jobs": {
+      "main": [
+        [
+          {
+            "node": "Send Latest Live Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Curated Query": {
+      "main": [
+        [
+          {
+            "node": "Format Curated Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Curated Results": {
+      "main": [
+        [
+          {
+            "node": "Send Curated Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": null,
+  "pinData": {},
+  "versionId": "job-radar-telegram-ui-v3",
+  "triggerCount": 0,
+  "tags": []
+}
