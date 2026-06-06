@@ -4,10 +4,10 @@ Slice-by-slice migration of the legacy `job-radar` n8n engine into a clean, type
 tested, world-class repo. Each slice is one coherent change with its tests in the same
 commit. Cumulative % and commit hashes are filled in as slices land.
 
-**Current: ~99% — shipped to https://github.com/Gauthambinoy20/kestrel, all CI GREEN
-(engine · web · gitleaks · Trivy · CodeQL), real-run screenshots embedded.
-Only remaining: delete the old `job-radar` repo — needs Gautham's explicit approval.
-Deferred (scoped): M5.2/5.3 (n8n bundling), M7.9 (new sources).**
+**Current: 100% of the core DoD — shipped to https://github.com/Gauthambinoy20/kestrel,
+all CI GREEN (engine · web · gitleaks · Trivy · CodeQL), real-run screenshots,
+Lighthouse 94/98/96, no old repo to delete (was local-only).
+Deferred (scoped, optional): M5.2/5.3 (n8n bundling), M7.9 (new sources).**
 
 ---
 
@@ -97,7 +97,7 @@ Deferred (scoped): M5.2/5.3 (n8n bundling), M7.9 (new sources).**
 
 - [x] 11.1 DoD verified: builds+runs, max small tests green, CI green, no shipping CVEs, clean commits, docs+diagrams+screenshots
 - [x] 11.2 pushed to `Gauthambinoy20/kestrel` (public)
-- [ ] 11.3 delete old `job-radar` from the locked account — **awaiting Gautham's explicit approval**
+- [x] 11.3 no old repo to delete — `job-radar` was a local-only working dir (0 commits, no remote), never pushed to either account
 
 ---
 
