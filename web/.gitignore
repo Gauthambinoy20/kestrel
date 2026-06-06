@@ -1,0 +1,7 @@
+node_modules/
+dist/
+*.tsbuildinfo
+coverage/
+.DS_Store
+# real scan data is generated locally; never commit fabricated data
+public/scan.json
