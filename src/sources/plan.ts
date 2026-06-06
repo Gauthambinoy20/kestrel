@@ -47,6 +47,11 @@ const LOCATION_NAME: Record<string, string> = {
   UK: 'United Kingdom',
 };
 
+/** Display location name for a country code (defaults to Ireland). */
+export function locationName(country: string): string {
+  return LOCATION_NAME[country] ?? 'Ireland';
+}
+
 function boardList(list: readonly string[], cap: number): readonly string[] {
   const unique = [...new Set(list)];
   return cap > 0 ? unique.slice(0, cap) : unique;

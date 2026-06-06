@@ -11,15 +11,15 @@ export interface RawJob {
   /** Job title (required — a job without one is unusable). */
   readonly title: string;
   /** Hiring company, when the source provides it. */
-  readonly company?: string | null;
+  readonly company?: string | null | undefined;
   /** Free-text location, when provided. */
-  readonly location?: string | null;
+  readonly location?: string | null | undefined;
   /** Apply/detail URL (required). */
   readonly url: string;
   /** Job description text, possibly truncated by the parser. */
-  readonly jd_text?: string;
+  readonly jd_text?: string | undefined;
   /** Posted/updated timestamp as provided by the source. */
-  readonly posted_at?: string | null;
+  readonly posted_at?: string | null | undefined;
   /** The untouched source record, retained for debugging/enrichment. */
   readonly raw?: unknown;
 }

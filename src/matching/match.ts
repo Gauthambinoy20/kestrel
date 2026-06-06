@@ -3,10 +3,10 @@ import type { EnrichedDomain } from '../domains/types.js';
 
 /** The job fields the matcher reads. */
 export interface MatchInput {
-  readonly title?: string | null;
-  readonly jd_text?: string | null;
-  readonly company?: string | null;
-  readonly source?: string | null;
+  readonly title?: string | null | undefined;
+  readonly jd_text?: string | null | undefined;
+  readonly company?: string | null | undefined;
+  readonly source?: string | null | undefined;
 }
 
 /** The winning domain match for a job, with a 0–100 score and explanation. */
