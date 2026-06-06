@@ -1,0 +1,23 @@
+[
+  {
+    "match": "greenhouse.io/v1/boards/stripe",
+    "body": {
+      "jobs": [
+        {
+          "title": "Machine Learning Engineer",
+          "absolute_url": "https://example.com/stripe/ml-engineer-1",
+          "content": "Work on pytorch and tensorflow models. LLM and RAG experience welcome.",
+          "location": { "name": "Dublin, Ireland" },
+          "updated_at": "2026-06-01T00:00:00Z"
+        },
+        {
+          "title": "Data Scientist",
+          "absolute_url": "https://example.com/stripe/data-scientist-2",
+          "content": "Machine learning, analytics and experimentation.",
+          "location": { "name": "Remote - EU" },
+          "updated_at": "2026-06-02T00:00:00Z"
+        }
+      ]
+    }
+  }
+]
