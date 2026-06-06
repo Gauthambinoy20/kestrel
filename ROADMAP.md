@@ -4,7 +4,7 @@ Slice-by-slice migration of the legacy `job-radar` n8n engine into a clean, type
 tested, world-class repo. Each slice is one coherent change with its tests in the same
 commit. Cumulative % and commit hashes are filled in as slices land.
 
-**Current: ~62% — M0–M4, M5.1, M6 complete; M5.2/5.3 deferred; M7 next.**
+**Current: ~80% — M0–M4, M5.1, M6, M7 (12/13) complete; M5.2/5.3 + M7.9 deferred; M8 (web UI) next.**
 
 ---
 
@@ -56,20 +56,21 @@ commit. Cumulative % and commit hashes are filled in as slices land.
 - [x] 6.4 real smoke run verified — live scan returned 43 matched AI/ML jobs from 1581 real candidates with verified links
 - [ ] 6.2 local store (SQLite/JSON) for cross-run dedup → folded into M7.6
 
-## M7 — Features (target 75%)
+## M7 — Features (12/13 ✅)
 
-- [ ] 7.1 config-driven taxonomy (extensible, schema-validated)
-- [ ] 7.2 visa / Stamp 1G / sponsorship flags
-- [ ] 7.3 salary parse + normalise
-- [ ] 7.4 work-mode classifier (remote / hybrid / onsite)
-- [ ] 7.5 location & country normalisation + filter
-- [ ] 7.6 cross-run dedup with persistent seen-store
-- [ ] 7.7 explainable scoring v2 (transparent breakdown)
-- [ ] 7.8 freshness / age-decay + stale-link handling
-- [ ] 7.9 two new compliance-safe sources (Recruitee, SmartRecruiters public boards)
-- [ ] 7.10 structured run report (sources, counts, failures, guardrails)
-- [ ] 7.11 Telegram digest v2 (MarkdownV2 + >4096 chunking)
-- [ ] 7.12 each feature ships with its full test set
+- [x] 7.1 config-driven taxonomy (schema + validated loader) (3e24be8)
+- [x] 7.2 visa / Stamp 1G / sponsorship flags (fd4d189)
+- [x] 7.3 salary parse + normalise (7f22f2a)
+- [x] 7.4 work-mode classifier (remote / hybrid / onsite) (ffe39a8)
+- [x] 7.5 location & country normalisation (8a0444b)
+- [x] 7.6 cross-run dedup: in-memory seen-store + file persistence (07651bf, 876ac35)
+- [x] 7.7 explainable score breakdown (3e08874)
+- [x] 7.8 freshness / age-decay (daabed9)
+- [ ] 7.9 two new sources (Recruitee, SmartRecruiters) — **DEFERRED** (unverified API shapes/slugs; see Known issues)
+- [x] 7.10 structured run report (sources, counts, failures) (b55346b)
+- [x] 7.11 Telegram MarkdownV2 escaping + >4096 chunking (c318228)
+- [x] 7.x features wired into the pipeline via the annotate stage (e0a29f9)
+- [x] 7.12 every feature ships with its full test set
 
 ## M8 — Web dashboard (world-class UI) (target 84%)
 
@@ -102,12 +103,16 @@ commit. Cumulative % and commit hashes are filled in as slices land.
 - **M5.2/5.3 deferred:** regenerating the n8n Code-node bodies from the typed lib (esbuild
   bundling into Code-node strings + a parity test) is scoped but not done. The production
   n8n workflow already runs; this is a sync/maintainability improvement, not a blocker.
+- **M7.9 deferred:** Recruitee + SmartRecruiters integrations need their live API response
+  shapes and working public board slugs verified before shipping (real-tests rule). Parsers/
+  plan/runner are structured to drop in once verified.
 - Legacy n8n install blocks Code-node access to `$env`; the env reads must stay guarded.
 - Some public ATS slugs are stale (return zero jobs) — prune during a real run.
 
 ## Next
 
-→ M7.1: config-driven taxonomy (extensible, schema-validated), with tests.
+→ M8: world-class web dashboard (React + MUI/shadcn) over the engine output.
+   Then M9 (CI green), M10 (diagrams + screenshots from a real run), M11 (push on Gautham's word).
 
 ## ✍️ TODO: my words
 
