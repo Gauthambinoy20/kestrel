@@ -4,7 +4,7 @@ Slice-by-slice migration of the legacy `job-radar` n8n engine into a clean, type
 tested, world-class repo. Each slice is one coherent change with its tests in the same
 commit. Cumulative % and commit hashes are filled in as slices land.
 
-**Current: 5% — M0 complete; M1 next.**
+**Current: 15% — M0 + M1 complete; M2 next.**
 
 ---
 
@@ -13,13 +13,13 @@ commit. Cumulative % and commit hashes are filled in as slices land.
 - [x] 0.1 repo scaffold + toolchain (TypeScript, Vitest, ESLint, Prettier, EditorConfig) ... 3%  (commit 60918c6)
 - [x] 0.2 baseline module + green test + clean build + license/env example ............... 5%  (commit 691583b)
 
-## M1 — Core logic extraction (target 15%)
+## M1 — Core logic extraction (15% ✅)
 
-- [ ] 1.1 text normalisation (`normalizeText`, `stripTitleNoise`, `containsPhrase`) + tests
-- [ ] 1.2 domain taxonomy (20 domains) as config + `enrichDomain` + alias expansion + tests
-- [ ] 1.3 domain resolution (`resolveSelectedDomains`, "all", fuzzy, custom fallback) + tests
-- [ ] 1.4 seniority blocklist (`jobSeniorityBlocked`) + word-boundary guards + tests
-- [ ] 1.5 domain matching + scoring (`matchJobToDomains`) + tests
+- [x] 1.1 text normalisation (`normalizeText`, `stripTitleNoise`, `containsPhrase`) + tests (89fac7c)
+- [x] 1.2 domain taxonomy (20 domains) as config + `enrichDomain` + alias expansion + tests (941b346, 0a04416)
+- [x] 1.3 domain resolution (`resolveSelectedDomains`, "all", fuzzy, custom fallback) + tests (08fc3bd)
+- [x] 1.4 seniority blocklist (`jobSeniorityBlocked`) + word-boundary guards + tests (bdbc8b9)
+- [x] 1.5 domain matching + scoring (`matchJobToDomains`) + tests (5d4e361)
 
 ## M2 — Sources + schema validation (target 25%)
 
@@ -102,7 +102,7 @@ commit. Cumulative % and commit hashes are filled in as slices land.
 
 ## Next
 
-→ M1.1: extract text normalisation (`normalizeText`, `stripTitleNoise`, `containsPhrase`) into the typed core with full tests.
+→ M2.1: Zod schemas for every source payload, quarantining malformed rows, with tests.
 
 ## ✍️ TODO: my words
 
