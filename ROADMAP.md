@@ -4,7 +4,7 @@ Slice-by-slice migration of the legacy `job-radar` n8n engine into a clean, type
 tested, world-class repo. Each slice is one coherent change with its tests in the same
 commit. Cumulative % and commit hashes are filled in as slices land.
 
-**Current: 35% — M0–M3 complete; M4 next.**
+**Current: 45% — M0–M4 complete; M5 next.**
 
 ---
 
@@ -36,11 +36,11 @@ commit. Cumulative % and commit hashes are filled in as slices land.
 - [x] 3.4 apply-readiness score (`calcApplyReadyScore`) bounds + monotonicity + tests (dbcafc4)
 - [x] 3.5 verify+enrich orchestration (`enrichJobs`, cached company-link checks, concurrency) + tests (75acaf8)
 
-## M4 — Rank, digest & Telegram routing (target 45%)
+## M4 — Rank, digest & Telegram routing (45% ✅)
 
-- [ ] 4.1 deterministic ranker + explainable reason + tests
-- [ ] 4.2 digest builder + chunking/escaping + tests
-- [ ] 4.3 Telegram intent router + prefs persistence + curated SQL builder + tests
+- [x] 4.1 deterministic ranker + explainable reason + tests (349978e)
+- [x] 4.2 digest builder + chunking/escaping + tests (4b36781)
+- [x] 4.3 Telegram intent router + prefs + curated SQL + menu builder + tests (c1ef6cb, 1c88636, a7085a3)
 
 ## M5 — n8n adapters (target 53%)
 
@@ -103,7 +103,7 @@ commit. Cumulative % and commit hashes are filled in as slices land.
 
 ## Next
 
-→ M4.1: deterministic ranker + explainable reason, with tests.
+→ M5.1: SQL builder (`pgEscape`, `buildSql`) injection-safe, with tests.
 
 ## ✍️ TODO: my words
 
