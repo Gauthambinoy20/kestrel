@@ -1,0 +1,25 @@
+# dependencies
+node_modules/
+
+# build output
+dist/
+*.tsbuildinfo
+
+# test / coverage
+coverage/
+
+# local data store (real runs write here; never committed)
+.kestrel/
+*.sqlite
+*.sqlite-journal
+
+# secrets — only .env.example is committed
+.env
+.env.*
+!.env.example
+
+# editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.log
