@@ -5,6 +5,7 @@ import { validateRawJobs } from '../sources/validate.js';
 import { assembleJobs } from './assemble.js';
 import { enrichJobs, type EnrichedJob } from '../enrich/enrich.js';
 import { rankJobs, type Ranked } from '../rank/rank.js';
+import { annotateJobs, type JobAnnotations } from '../features/annotate.js';
 import type { HttpClient } from '../net/retry.js';
 import type { VerifyClient } from '../enrich/verify.js';
 
@@ -35,9 +36,12 @@ export interface ScanConfig {
   readonly rand?: () => number;
 }
 
+/** A ranked job with its feature annotations attached. */
+export type RankedJob = Ranked<EnrichedJob> & { annotations: JobAnnotations };
+
 /** The outcome of a scan: the ranked jobs plus run diagnostics. */
 export interface ScanResult {
-  readonly ranked: Ranked<EnrichedJob>[];
+  readonly ranked: RankedJob[];
   readonly selectedDomains: string[];
   readonly candidateCount: number;
   readonly quarantinedCount: number;
@@ -99,7 +103,7 @@ export async function scan(config: ScanConfig): Promise<ScanResult> {
   });
 
   return {
-    ranked: rankJobs(enriched, config.topN),
+    ranked: annotateJobs(rankJobs(enriched, config.topN), config.now),
     selectedDomains: domains.map((d) => d.label),
     candidateCount: candidates.length,
     quarantinedCount: quarantined.length,
