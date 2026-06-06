@@ -22,9 +22,9 @@ runner are thin adapters over that library — so every rule is unit-tested in i
 
 ## Status
 
-🚧 **Active migration / rebuild.** Tracked slice-by-slice in [ROADMAP.md](./ROADMAP.md).
-This README documents what exists today and is updated as each milestone lands — no
-feature is described here before it is built and tested.
+The engine, CLI and web dashboard are built and tested (600+ unit tests, ~97% coverage)
+and the CLI is verified against live APIs. Progress is tracked slice-by-slice in
+[ROADMAP.md](./ROADMAP.md). Everything here is built and tested before it is described.
 
 ## Architecture (current engine)
 
@@ -58,8 +58,27 @@ mocked in tests. Optional API-key sources are configured via `.env` (see
 
 ## How to run
 
-✍️ TODO: my words — once the CLI runner lands (M6) this section gets the real
-`kestrel scan ...` invocation and a real-run example.
+```bash
+# Scan live keyless public boards and print a ranked digest (no API keys needed):
+npm run cli -- scan --domain ai --country IE --top 10
+
+# JSON output (drives the dashboard):
+npm run cli -- scan --domain ai --country IE --top 12 --json > web/public/scan.json
+
+# Deterministic offline run from fixtures (dev/test):
+npm run cli -- scan --domain ai --offline tests/fixtures/offline-scan.json
+```
+
+A real scan returns live, link-verified jobs — e.g. a recent run pulled **2,450
+candidates → 75 matched → 12 ranked** across 25 sources.
+
+### Web dashboard
+
+```bash
+cd web && npm ci && npm run dev   # then open the printed URL
+```
+
+The dashboard binds to `web/public/scan.json` (real engine output — no bundled data).
 
 ## How to test
 
@@ -73,7 +92,15 @@ cases are parametrised across all 20 domains and all source shapes.
 
 ## Screenshots
 
-📸 _Captured from a real production run — added at M9 (no staged/fake data)._
+Captured from the web dashboard rendering a **real scan** (no staged data).
+
+| Dashboard (light) | Dashboard (dark) |
+| --- | --- |
+| ![Kestrel dashboard, light theme](docs/screenshots/dashboard-light.png) | ![Kestrel dashboard, dark theme](docs/screenshots/dashboard-dark.png) |
+
+| Search filter | Mobile (responsive) |
+| --- | --- |
+| ![Kestrel dashboard with a search filter applied](docs/screenshots/dashboard-search.png) | ![Kestrel dashboard on a mobile viewport](docs/screenshots/dashboard-mobile.png) |
 
 ## License
 
