@@ -4,7 +4,7 @@ Slice-by-slice migration of the legacy `job-radar` n8n engine into a clean, type
 tested, world-class repo. Each slice is one coherent change with its tests in the same
 commit. Cumulative % and commit hashes are filled in as slices land.
 
-**Current: 15% — M0 + M1 complete; M2 next.**
+**Current: 25% — M0–M2 complete; M3 next.**
 
 ---
 
@@ -21,12 +21,12 @@ commit. Cumulative % and commit hashes are filled in as slices land.
 - [x] 1.4 seniority blocklist (`jobSeniorityBlocked`) + word-boundary guards + tests (bdbc8b9)
 - [x] 1.5 domain matching + scoring (`matchJobToDomains`) + tests (5d4e361)
 
-## M2 — Sources + schema validation (target 25%)
+## M2 — Sources + schema validation (25% ✅)
 
-- [ ] 2.1 Zod schemas for every source payload + quarantine of malformed rows + tests
-- [ ] 2.2 per-source parsers (Adzuna, Jooble, Greenhouse, Lever, Ashby, RemoteOK, SGAI, SerpAPI) + tests
-- [ ] 2.3 concurrency + retry/backoff + retryable-status logic (`runLimited`, `safe`) + tests
-- [ ] 2.4 dedup + result assembly + tests
+- [x] 2.1 Zod RawJob schema + quarantine partitioner + tests (7c8c366, 1c7ff4b)
+- [x] 2.2 per-source parsers (helpers + ATS + aggregators + RemoteOK/SGAI) + tests (27ece96, 72bbe4e, 6ee4cb1, e00a7fa)
+- [x] 2.3 bounded concurrency + retry/backoff + retryable-status (`runLimited`, `safeRequest`) + tests (2aea960, 6896348)
+- [x] 2.4 URL dedup + stable hash + scrape assembly + tests (20ded2e, a917687, fec973e)
 
 ## M3 — Verify, enrich & score (target 35%)
 
@@ -102,7 +102,7 @@ commit. Cumulative % and commit hashes are filled in as slices land.
 
 ## Next
 
-→ M2.1: Zod schemas for every source payload, quarantining malformed rows, with tests.
+→ M3.1: URL safety (`safeUrl`, `baseDomain` incl. multi-part TLDs, `cleanCompanySlug`) with tests.
 
 ## ✍️ TODO: my words
 
