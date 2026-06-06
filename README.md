@@ -13,6 +13,7 @@
 [![Vitest](https://img.shields.io/badge/tested%20with-Vitest-6E9F18?logo=vitest&logoColor=white)](https://vitest.dev)
 [![Tests](https://img.shields.io/badge/tests-624%20passing-3DDC84)](#testing)
 [![Coverage](https://img.shields.io/badge/coverage-~97%25-3DDC84)](#testing)
+[![Lighthouse](https://img.shields.io/badge/Lighthouse-94%20·%2098%20·%2096-success?logo=lighthouse&logoColor=white)](#testing)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 [**Quick Start**](#quick-start) · [**Architecture**](docs/ARCHITECTURE.md) · [**Report a bug**](https://github.com/Gauthambinoy20/kestrel/issues)
@@ -116,7 +117,7 @@ npm run cli -- scan --domain ai --offline tests/fixtures/offline-scan.json
 cd web && npm ci && npm run dev   # open the printed URL
 ```
 
-The dashboard binds to `web/public/scan.json` — **real engine output, no bundled data**. Generate it with the `--json` command above, then refresh.
+The dashboard binds to `web/public/scan.json` — **real engine output, no bundled data**. Generate it with the `--json` command above, then refresh. A production-build Lighthouse audit scores **94 performance · 98 accessibility · 96 best-practices**.
 
 ## How it works
 

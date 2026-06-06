@@ -80,6 +80,7 @@ Deferred (scoped): M5.2/5.3 (n8n bundling), M7.9 (new sources).**
 - [x] 8.1 React + MUI app: ranked jobs, filters, run report (f547408, eee85af)
 - [x] 8.2 responsive · dark/light (persisted) · loading/empty/error states
 - [x] 8.3 binds to REAL engine output (scan.json from a live run; no placeholder data) + component tests
+- [x] 8.4 Lighthouse on the production build: performance 94 · accessibility 98 · best-practices 96 (all ≥ 90)
 
 ## M9 — CI/CD ✅ GREEN on GitHub
 
