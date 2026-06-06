@@ -21,6 +21,7 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
+    "verify": "npm run lint && npm run typecheck && npm run test",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
