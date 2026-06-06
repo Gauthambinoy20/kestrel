@@ -11,8 +11,7 @@ ready-to-apply each one is, ranks the strongest matches, and delivers a digest.
 The logic lives as a pure, typed TypeScript library. The n8n workflow and the CLI
 runner are thin adapters over that library — so every rule is unit-tested in isolation.
 
-<!-- CI badges go live once the pipeline is pushed (M8). -->
-<!-- ![CI](https://github.com/Gauthambinoy20/kestrel/actions/workflows/ci.yml/badge.svg) -->
+[![CI](https://github.com/Gauthambinoy20/kestrel/actions/workflows/ci.yml/badge.svg)](https://github.com/Gauthambinoy20/kestrel/actions/workflows/ci.yml)
 
 ---
 
