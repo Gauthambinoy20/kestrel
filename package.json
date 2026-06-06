@@ -1,0 +1,47 @@
+{
+  "name": "kestrel",
+  "version": "0.1.0",
+  "description": "Multi-source job-discovery engine: expands an IT domain into hundreds of role aliases, scrapes public ATS boards and job APIs, filters out senior roles, verifies live links, scores apply-readiness, and ranks the best matches.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Gautham Binoy <gautham.binoy005@gmail.com>",
+  "engines": {
+    "node": ">=22"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:cov": "vitest run --coverage",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "dependencies": {
+    "zod": "3.23.8"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.17.0",
+    "@types/node": "22.10.2",
+    "@vitest/coverage-v8": "2.1.8",
+    "eslint": "9.17.0",
+    "eslint-config-prettier": "9.1.0",
+    "prettier": "3.4.2",
+    "typescript": "5.7.2",
+    "typescript-eslint": "8.18.1",
+    "vitest": "2.1.8"
+  }
+}
