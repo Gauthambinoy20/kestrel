@@ -4,14 +4,14 @@ Slice-by-slice migration of the legacy `job-radar` n8n engine into a clean, type
 tested, world-class repo. Each slice is one coherent change with its tests in the same
 commit. Cumulative % and commit hashes are filled in as slices land.
 
-**Current: 0% — M0 in progress.**
+**Current: 5% — M0 complete; M1 next.**
 
 ---
 
-## M0 — Scaffold & migration baseline (target 5%)
+## M0 — Scaffold & migration baseline (5% ✅)
 
-- [ ] 0.1 repo scaffold + toolchain (TypeScript, Vitest, ESLint, Prettier, EditorConfig) ... 3%
-- [ ] 0.2 baseline module + green test + clean build + license/env example ............... 5%
+- [x] 0.1 repo scaffold + toolchain (TypeScript, Vitest, ESLint, Prettier, EditorConfig) ... 3%  (commit 60918c6)
+- [x] 0.2 baseline module + green test + clean build + license/env example ............... 5%  (commit 691583b)
 
 ## M1 — Core logic extraction (target 15%)
 
@@ -102,7 +102,7 @@ commit. Cumulative % and commit hashes are filled in as slices land.
 
 ## Next
 
-→ M0.1: land the scaffold and a green baseline build.
+→ M1.1: extract text normalisation (`normalizeText`, `stripTitleNoise`, `containsPhrase`) into the typed core with full tests.
 
 ## ✍️ TODO: my words
 
